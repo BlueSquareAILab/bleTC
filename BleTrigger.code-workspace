@@ -1,0 +1,17 @@
+{
+	"folders": [
+		{
+			"path": "fw"
+		},
+		{
+			"path": "../fireBolt/pio_example/ex12_ble"
+		},
+		{
+			"path": "../fireBolt/pio_example/ex00_cli"
+		},
+		{
+			"path": "../milcam/redstarTargets/firmware/egcsUnit_v2"
+		}
+	],
+	"settings": {}
+}
