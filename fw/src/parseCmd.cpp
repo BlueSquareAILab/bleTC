@@ -17,6 +17,9 @@ extern String getAddress();
 extern String getMtuSize();
 extern String getDeviceName();
 
+extern void clearTriggerCount();
+extern int getTriggerCount();
+
 extern bool getModeStatus();
 extern int getBatteryLevel();
 
@@ -41,11 +44,11 @@ String ParseCmd(String _strLine) {
         else if(cmd == "reboot") {
             ESP.restart();
         }
-        else if(cmd == "status") {
-            _res_doc["result"] = "ok";
-            _res_doc["mode"] = getModeStatus();
-            _res_doc["battery"] = getBatteryLevel();
-        }
+        // else if(cmd == "status") {
+        //     _res_doc["result"] = "ok";
+        //     _res_doc["mode"] = getModeStatus();
+        //     _res_doc["battery"] = getBatteryLevel();
+        // }
         else if(cmd == "config") {
             if(g_MainParser.getTokenCount() > 1) {
                 String subCmd = g_MainParser.getToken(1);
@@ -63,7 +66,7 @@ String ParseCmd(String _strLine) {
                     
                     //parse json g_config.dump()
                     String jsonStr = g_config.dump();
-                    DeserializationError error = deserializeJson(_res_doc["ms"], jsonStr);
+                    DeserializationError error = deserializeJson(_res_doc["cfg"], jsonStr);
                     if (error) {
                         // Serial.print(F("deserializeJson() failed: "));
                         // Serial.println(error.f_str());
@@ -162,6 +165,17 @@ String ParseCmd(String _strLine) {
                 _res_doc["ms"] = "need sub command";
             }
         }
+        else if(cmd == "clear") {
+            clearTriggerCount();
+            _res_doc["result"] = "ok";
+            _res_doc["ms"] = "trigger count cleared";
+        }
+        else if(cmd == "status") {
+            _res_doc["result"] = "ok";
+            _res_doc["count"] = getTriggerCount();
+            _res_doc["mode"] = getModeStatus();
+            _res_doc["battery"] = getBatteryLevel();
+        }
         else if(cmd == "ble") {
 
             // BLE
@@ -176,6 +190,10 @@ String ParseCmd(String _strLine) {
                     _res_doc["characteristicUUID"] = getCharacteristicUUID();
                     _res_doc["mtuSize"] = getMtuSize();
                     _res_doc["connection"] = getConnectionStatus();
+                }
+                else {
+                    _res_doc["result"] = "fail";
+                    _res_doc["ms"] = "unknown sub command";
                 }
             }
             else {

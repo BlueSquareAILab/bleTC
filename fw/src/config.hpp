@@ -77,6 +77,11 @@ public:
             set("password", "1111");
         }
 
+        if(!hasKey("debounce"))
+        {
+            set("debounce", 50);
+        }
+
     }
 
     void save()
@@ -125,16 +130,20 @@ public:
     }
 
     template <typename T>
-    T get(const char *key) const
+    T get(const char *key, T defaultValue = T()) const
     {
-
         JsonDocument doc;
         DeserializationError error = deserializeJson(doc, jsonDoc);
         if (error)
         {
             Serial.print(F("deserializeJson() failed: "));
             Serial.println(error.f_str());
-            return T();
+            return defaultValue;
+        }
+
+        if (!doc.containsKey(key))
+        {
+            return defaultValue;
         }
 
         return doc[key].as<T>();

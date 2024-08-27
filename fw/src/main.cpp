@@ -12,8 +12,8 @@
 
 #include <TaskScheduler.h>
 #include <ArduinoJson.h>
-#include <atomic>  // atomic 헤더 추가
 
+#include "A3144.hpp"
 
 
 #include "config.hpp"
@@ -72,31 +72,33 @@ String getDeviceName() {
     return "BSQTC_" + getChipID();
 }
 
-// volatile int triggerCount = 0;
-std::atomic<int> triggerCount(0);  // volatile int triggerCount = 0; 대신 사용
-
-// 디바운스를 위한 변수들
-volatile unsigned long lastDebounceTime = 0;
-unsigned long debounceDelay = 50;  // 50ms의 디바운스 시간
-
-// 인터럽트 처리 함수
-void IRAM_ATTR handleTriggerInterrupt() {
-    unsigned long currentTime = millis();
-    if ((currentTime - lastDebounceTime) > debounceDelay) {
-        triggerCount.fetch_add(1, std::memory_order_relaxed);  // atomic 연산으로 변경
-        lastDebounceTime = currentTime;
-    }
+void clearTriggerCount() {
+    A3144::clearTriggerCount();
 }
 
-Task taskNotify(20, TASK_FOREVER, []() {
-    if (deviceConnected) {
-        int currentCount = triggerCount.load(std::memory_order_relaxed);  // atomic 값 읽기
-        String _data = "#," + String(currentCount) + ",0,0,0";
+int getTriggerCount() {
+    return A3144::getTriggerCount();
+}
 
-        pCharacteristic->setValue(_data.c_str());
-        pCharacteristic->notify();
+
+
+Task taskNotify(20, TASK_FOREVER, []() {
+
+    static int oldValue = 0;
+    int _value = A3144::getTriggerCount();
+    if (_value != oldValue)
+    {
+        Serial.println("Magnetic Sensor: " + String(_value));
+        oldValue = _value;
+
+        if (deviceConnected) {
+            // int currentCount = triggerCount.load(std::memory_order_relaxed);  // atomic 값 읽기
+            String _data = "#," + String(_value) + ",0,0,0";
+            pCharacteristic->setValue(_data.c_str());
+            pCharacteristic->notify();
+        }
     }
-}, &g_ts, false); 
+}, &g_ts, true); 
 
 Task task_Cmd(100, TASK_FOREVER, []() {
 
@@ -140,7 +142,7 @@ class MyServerCallbacks : public BLEServerCallbacks {
         // // 환영 메시지 설정 및 알림 전송
         pCharacteristic->setValue("welcome to ESP32 BLE Server");
 
-        taskNotify.enable();
+        // taskNotify.enable();
 
         printMtuSize(pServer);
     }
@@ -153,7 +155,7 @@ class MyServerCallbacks : public BLEServerCallbacks {
         pServer->getAdvertising()->start(); // 클라이언트 연결 해제 시 광고 재시작
 
         task_LedBlink.enable();
-        taskNotify.disable();
+        // taskNotify.disable();
     }
 
     void onMtuChanged(BLEServer *pServer, uint16_t mtu) {
@@ -212,9 +214,9 @@ void setup()
     pinMode(ledPins_status, OUTPUT);  
     
     //triggerPin interrupt
-    pinMode(triggerPin, INPUT_PULLUP);
-    attachInterrupt(digitalPinToInterrupt(triggerPin), handleTriggerInterrupt, FALLING);
 
+    
+    
     //modePin
     pinMode(modePin, INPUT_PULLUP);
     
@@ -225,6 +227,10 @@ void setup()
 
     Serial.println(":-]");
     Serial.println("Serial connected");
+
+    u32_t debounceDelay = g_config.get<u32_t>("debounceDelay",50);
+
+    A3144::setup(triggerPin, debounceDelay);
     
     g_ts.startNow();
 
