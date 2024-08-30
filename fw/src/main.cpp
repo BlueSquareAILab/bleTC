@@ -93,7 +93,7 @@ Task taskNotify(20, TASK_FOREVER, []() {
 
         if (deviceConnected) {
             // int currentCount = triggerCount.load(std::memory_order_relaxed);  // atomic 값 읽기
-            String _data = "#," + String(_value) + ",0,0,0";
+            String _data = "#," + String(_value) + ",0,0,0,0,0";
             pCharacteristic->setValue(_data.c_str());
             pCharacteristic->notify();
         }
