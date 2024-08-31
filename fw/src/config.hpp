@@ -77,9 +77,9 @@ public:
             set("password", "1111");
         }
 
-        if(!hasKey("debounce"))
+        if(!hasKey("debounceDelay"))
         {
-            set("debounce", 50);
+            set("debounceDelay", 50);
         }
 
     }
