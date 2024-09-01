@@ -29,9 +29,9 @@ public class BleScanner : MonoBehaviour
 
     public string selectedDeviceId;
     public string selectedServiceId;
-    Dictionary<string, string> characteristicNames = new Dictionary<string, string>();
+    Dictionary<string, string> characteristicNames = new();
     public string selectedCharacteristicId;
-    Dictionary<string, Dictionary<string, string>> devices = new Dictionary<string, Dictionary<string, string>>();
+    Dictionary<string, Dictionary<string, string>> devices = new();
     string lastError;
 
     const string SERVICE_UUID = "2ca354b0-5f62-11ef-b4d4-f7af9038ee7d";
@@ -55,7 +55,7 @@ public class BleScanner : MonoBehaviour
             if(isSubscribed) {
                 // BleApi.UnsubscribeCharacteristic(selectedDeviceId, selectedServiceId, selectedCharacteristicId, false);
                 // isSubscribed = false;
-                BleApi.DisconnectDevice(selectedDeviceId);
+                // BleApi.DisconnectDevice(selectedDeviceId);
                 isSubscribed = false;
 
                 btnConnect.GetComponentInChildren<TextMeshProUGUI>().text = "Connect";

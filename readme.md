@@ -28,6 +28,8 @@
 2. `status`: 현재 상태 조회 (트리거 카운트, 모드, 배터리 레벨)
 3. `clear`: 트리거 카운트 초기화
 4. `ble info`: BLE 관련 정보 조회
+5. 'config [set,get,dump]': 설정 조회 및 변경
+6. save , load : 설정 저장 및 불러오기
 
 ### 4.3 응답 형식
 
@@ -43,12 +45,12 @@
 
 ## 5. Unity에서의 구현 가이드
 
-### 5.1 BLE 플러그인 선택
+### 5.1 BLE 플러그인
 
-Unity에서 BLE 통신을 구현하기 위해서는 적절한 플러그인을 사용해야 합니다. 다음과 같은 옵션들이 있습니다:
+Unity에서 BLE 통신을 구현하기 위해서는 적절한 플러그인을 사용해야 합니다.  
+이 예제는 windows OS 용, 오픈소스 [BleWinrt](https://github.com/adabru/BleWinrtDll) 플러그인을 사용합니다.  
 
-- [Unity Bluetooth LE Asset](https://assetstore.unity.com/packages/tools/network/bluetooth-le-for-ios-tvos-and-android-26661)
-- [Android BLE Plugin for Unity](https://github.com/screen-co/AndroidBLE-Unity)
+
 
 ### 5.2 연결 및 통신 구현
 
@@ -74,81 +76,12 @@ Unity에서 BLE 통신을 구현하기 위해서는 적절한 플러그인을 �
 
 2. 상태 조회:
    - "status" 명령어를 전송하고 JSON 응답을 파싱합니다.
+   - battery 필드가 배터리 잔량을 %로 표시합니다.
 
 3. 초기화:
    - 게임 시작 시 "clear" 명령어를 전송하여 카운트를 초기화합니다.
 
-### 5.4 예제 코드 (의사 코드)
+4. debounce 설정:
+   - 트리거 이벤트를 처리할 때 디바운스를 적용합니다.
+   - 예 : config set debounceDelay 100 (단위: ms)
 
-```csharp
-public class GunController : MonoBehaviour
-{
-    private BLEDevice gunDevice;
-    private int triggerCount = 0;
-
-    private void Start()
-    {
-        ConnectToGun();
-    }
-
-    private async void ConnectToGun()
-    {
-        var devices = await BLEManager.ScanForDevicesAsync("BSQTC_");
-        if (devices.Any())
-        {
-            gunDevice = devices.First();
-            await gunDevice.ConnectAsync();
-            await gunDevice.EnableNotificationsAsync(CHARACTERISTIC_UUID, OnDataReceived);
-            SendCommand("clear");
-        }
-    }
-
-    private void OnDataReceived(byte[] data)
-    {
-        string message = Encoding.UTF8.GetString(data);
-        if (message.StartsWith("#"))
-        {
-            var parts = message.Split(',');
-            triggerCount = int.Parse(parts[1]);
-            OnTriggerPulled();
-        }
-        else
-        {
-            // 기타 응답 처리
-            ProcessJsonResponse(message);
-        }
-    }
-
-    private void OnTriggerPulled()
-    {
-        // 총기 발사 로직 구현
-    }
-
-    private async void SendCommand(string command)
-    {
-        await gunDevice.WriteAsync(CHARACTERISTIC_UUID, Encoding.UTF8.GetBytes(command));
-    }
-
-    private void ProcessJsonResponse(string jsonString)
-    {
-        // JSON 파싱 및 처리
-    }
-}
-```
-
-## 6. 주의사항 및 팁
-
-1. MTU 크기:
-   - BLE의 MTU 크기에 주의하세요. 긴 메시지는 분할 전송이 필요할 수 있습니다.
-
-2. 연결 상태 관리:
-   - 연결이 끊어졌을 때 자동으로 재연결을 시도하는 로직을 구현하세요.
-
-3. 배터리 관리:
-   - 주기적으로 배터리 상태를 체크하고 사용자에게 알립니다.
-
-4. 디바운싱:
-   - 하드웨어에서 이미 디바운싱을 처리하지만, 소프트웨어에서도 추가적인 디바운싱을 고려해볼 수 있습니다.
-
-5. 에러 처리:
-   - 모든 BLE 작업에 대해 적절한 에러 처리를 구현하세요.

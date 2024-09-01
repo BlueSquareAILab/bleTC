@@ -99,6 +99,6 @@ public class BleApi
     [DllImport("BleWinrtDll.dll", EntryPoint = "GetError")]
     public static extern void GetError(out ErrorMessage buf);
 
-    [DllImport("BleWinrtDll.dll", EntryPoint = "DisconnectDevice", CharSet = CharSet.Unicode)]
-    public static extern void DisconnectDevice(string deviceId);
+    // [DllImport("BleWinrtDll.dll", EntryPoint = "DisconnectDevice", CharSet = CharSet.Unicode)]
+    // public static extern void DisconnectDevice(string deviceId);
 }
