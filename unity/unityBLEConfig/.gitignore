@@ -1,0 +1,10 @@
+.vs/
+Library/
+obj/
+Temp/
+.vsconfig
+
+Assets/TextMesh Pro/
+UserSettings/
+Logs/
+.vscode/
