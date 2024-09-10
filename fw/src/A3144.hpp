@@ -21,7 +21,8 @@ namespace A3144 {
     void setup(int triggerPin,u32_t _debounceDelay = 50) {
         debounceDelay = _debounceDelay;
         pinMode(triggerPin, INPUT_PULLUP);
-        attachInterrupt(digitalPinToInterrupt(triggerPin), handleTriggerInterrupt, FALLING);
+        // attachInterrupt(digitalPinToInterrupt(triggerPin), handleTriggerInterrupt, FALLING);
+        attachInterrupt(digitalPinToInterrupt(triggerPin), handleTriggerInterrupt, CHANGE);  
     }
 
     int getTriggerCount() {
