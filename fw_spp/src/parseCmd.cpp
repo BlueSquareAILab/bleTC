@@ -8,6 +8,7 @@ tonkey g_MainParser;
 
 extern Config g_config;
 
+const char *__VERSION = "1.0.0";
 
 String parseCmd(String _strLine) {
 
@@ -22,8 +23,8 @@ String parseCmd(String _strLine) {
                 /* code */
                 _res_doc["result"] = "ok";
                 _res_doc["os"] = "cronos-v1";
-                _res_doc["app"] = "example-00 cli";
-                _res_doc["version"] = "1.0.1";
+                _res_doc["app"] = "bleTC_SPP";
+                _res_doc["version"] = __VERSION;
                 _res_doc["author"] = "gbox3d";
 // esp8266 chip id
 #ifdef ESP8266
