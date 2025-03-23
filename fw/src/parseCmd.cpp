@@ -4,8 +4,6 @@
 #include "config.hpp"
 #include "etc.hpp"
 
-
-
 tonkey g_MainParser;
 
 extern Config g_config;
@@ -20,8 +18,13 @@ extern String getDeviceName();
 extern void clearTriggerCount();
 extern int getTriggerCount();
 
-extern bool getModeStatus();
+extern bool isMagazineInserted();  // magazineInsertedPin 상태 확인 함수 (이전 getModeStatus)
 extern int getBatteryLevel();
+
+// 추가 변수 및 함수 선언
+extern int maxAmmoCount;       // 최대 탄약 수
+extern int currentAmmoCount;   // 현재 탄약 수
+extern bool firingEnabled;     // 발사 가능 상태
 
 String ParseCmd(String _strLine) {
     
@@ -44,11 +47,6 @@ String ParseCmd(String _strLine) {
         else if(cmd == "reboot") {
             ESP.restart();
         }
-        // else if(cmd == "status") {
-        //     _res_doc["result"] = "ok";
-        //     _res_doc["mode"] = getModeStatus();
-        //     _res_doc["battery"] = getBatteryLevel();
-        // }
         else if(cmd == "config") {
             if(g_MainParser.getTokenCount() > 1) {
                 String subCmd = g_MainParser.getToken(1);
@@ -68,9 +66,6 @@ String ParseCmd(String _strLine) {
                     String jsonStr = g_config.dump();
                     DeserializationError error = deserializeJson(_res_doc["cfg"], jsonStr);
                     if (error) {
-                        // Serial.print(F("deserializeJson() failed: "));
-                        // Serial.println(error.f_str());
-                        // return;
                         _res_doc["result"] = "fail";
                         _res_doc["ms"] = "json parse error";
                     }
@@ -107,24 +102,15 @@ String ParseCmd(String _strLine) {
 
                         // JSON 문자열 파싱
                         DeserializationError error = deserializeJson(tempDoc, value);
-                        // DeserializationError error = deserializeJson(g_config[key.c_str()], value);
                         if (error) {
-                            // Serial.print(F("deserializeJson() failed: "));
-                            // Serial.println(error.f_str());
-                            // return;
                             _res_doc["result"] = "fail";
                             _res_doc["ms"] = "json parse error";
                         }
                         else {
-                            // JsonArray array = tempDoc[key].as<JsonArray>();
-
                             g_config.set(key.c_str(), tempDoc);
                             _res_doc["result"] = "ok";
                             _res_doc["ms"] = tempDoc;
                         }
-                        // g_config.set(key.c_str(), value);
-                        // _res_doc["result"] = "ok";
-                        // _res_doc["ms"] = "config set";
                     }
                     else {
                         _res_doc["result"] = "fail";
@@ -140,9 +126,6 @@ String ParseCmd(String _strLine) {
                         if(!g_config.hasKey(key.c_str())) {
                             _res_doc["result"] = "fail";
                             _res_doc["ms"] = "key not exist";
-                            // serializeJson(_res_doc, Serial);
-                            // Serial.println();
-                            // return;
                         }
                         else {
                             _res_doc["result"] = "ok";
@@ -173,16 +156,73 @@ String ParseCmd(String _strLine) {
         else if(cmd == "status") {
             _res_doc["result"] = "ok";
             _res_doc["count"] = getTriggerCount();
-            _res_doc["mode"] = getModeStatus();
+            _res_doc["magazineInserted"] = isMagazineInserted();  // 이름 변경
             _res_doc["battery"] = getBatteryLevel();
+            _res_doc["ammo"] = currentAmmoCount;  // 현재 탄약 수 추가
+            _res_doc["maxAmmo"] = maxAmmoCount;   // 최대 탄약 수 추가
+            _res_doc["firingEnabled"] = firingEnabled;  // 발사 가능 상태 추가
+        }
+        else if(cmd == "ammo") {
+            if(g_MainParser.getTokenCount() > 1) {
+                String subCmd = g_MainParser.getToken(1);
+                if(subCmd == "set") {
+                    if(g_MainParser.getTokenCount() > 2) {
+                        int newAmmo = g_MainParser.getToken(2).toInt();
+                        currentAmmoCount = constrain(newAmmo, 0, maxAmmoCount);
+                        
+                        // 탄약이 0이면 발사 중지
+                        if(currentAmmoCount <= 0) {
+                            firingEnabled = false;
+                            digitalWrite(D9, HIGH);  // 액츄에이터 활성화
+                        } else {
+                            firingEnabled = true;
+                            digitalWrite(D9, LOW);   // 액츄에이터 비활성화
+                        }
+                        
+                        _res_doc["result"] = "ok";
+                        _res_doc["ammo"] = currentAmmoCount;
+                    } else {
+                        _res_doc["result"] = "fail";
+                        _res_doc["ms"] = "need ammo count";
+                    }
+                }
+                else if(subCmd == "setmax") {
+                    if(g_MainParser.getTokenCount() > 2) {
+                        int newMaxAmmo = g_MainParser.getToken(2).toInt();
+                        maxAmmoCount = max(1, newMaxAmmo);  // 최소 1발은 설정
+                        g_config.set("maxAmmoCount", maxAmmoCount);  // 설정에 저장
+                        
+                        _res_doc["result"] = "ok";
+                        _res_doc["maxAmmo"] = maxAmmoCount;
+                    } else {
+                        _res_doc["result"] = "fail";
+                        _res_doc["ms"] = "need max ammo count";
+                    }
+                }
+                else if(subCmd == "reset") {
+                    currentAmmoCount = maxAmmoCount;
+                    firingEnabled = true;
+                    digitalWrite(D9, LOW);  // 액츄에이터 비활성화
+                    
+                    _res_doc["result"] = "ok";
+                    _res_doc["ammo"] = currentAmmoCount;
+                }
+                else {
+                    _res_doc["result"] = "fail";
+                    _res_doc["ms"] = "unknown sub command";
+                }
+            } else {
+                _res_doc["result"] = "ok";
+                _res_doc["ammo"] = currentAmmoCount;
+                _res_doc["maxAmmo"] = maxAmmoCount;
+                _res_doc["firingEnabled"] = firingEnabled;
+            }
         }
         else if(cmd == "ble") {
-
             // BLE
             if(g_MainParser.getTokenCount() > 1) {
                 String subCmd = g_MainParser.getToken(1);
                 if(subCmd == "info") {
-
                     _res_doc["result"] = "ok";
                     _res_doc["name"] = getDeviceName();
                     _res_doc["address"] = getAddress();
@@ -200,15 +240,11 @@ String ParseCmd(String _strLine) {
                 _res_doc["result"] = "fail";
                 _res_doc["ms"] = "need sub command";
             }
-            
         }
         else {
             _res_doc["result"] = "fail";
             _res_doc["ms"] = "unknown command";
         }
-        // serializeJson(g_res_doc, Serial);
-        // Serial.println();
-        
     }
     else {
         _res_doc["result"] = "fail";
@@ -217,5 +253,3 @@ String ParseCmd(String _strLine) {
 
     return _res_doc.as<String>();
 }
-
-

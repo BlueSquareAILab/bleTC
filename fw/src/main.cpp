@@ -1,6 +1,6 @@
 #include <Arduino.h>
 
-// #include <esp_system.h>
+#include <Adafruit_NeoPixel.h>
 
 #include <BLEDevice.h>
 #include <BLEServer.h>
@@ -13,8 +13,7 @@
 #include <TaskScheduler.h>
 #include <ArduinoJson.h>
 
-#include "A3144.hpp"
-
+#include "triggerCounter.hpp"  // A3144.hpp 대신 새 이름으로 변경
 
 #include "config.hpp"
 #include "etc.hpp"
@@ -26,14 +25,23 @@ extern String ParseCmd(String _strLine);
 
 #ifdef SEED_XIAO_ESP32C3
 
-const int ledPins_status = D10;
-// const int analogPins[] = {D0, D1};
-// const int buttonPins[] = {D8, D2};
-const int triggerPin = D8;
-const int modePin = D2;
-const int batteryPin = A0;
-const int batStatusPin[] = {D3, D4, D5};
+const int ledPins_status = D10;  // 연결상태 LED
+const int actionPin1 = D9;       // 액츄에이터 1 (발사 중지용)
 
+const int triggerPin = D2;       // 트리거 감지 핀
+const int magazineInsertedPin = D3;  // 탄창 삽입 여부 감지 핀 (이전 modePin)
+
+const int batteryPin = A0;       // 배터리 전압 측정 핀
+const int neoPixelPin = D1;      // 네오픽셀 제어 핀 (이전 batStatusPin)
+
+// 네오픽셀 설정 (픽셀 수에 맞게 조정)
+#define NUM_PIXELS 1
+Adafruit_NeoPixel pixels(NUM_PIXELS, neoPixelPin, NEO_GRB + NEO_KHZ800);
+
+// 탄약 관련 설정
+int maxAmmoCount = 30;           // 최대 탄약 수
+int currentAmmoCount = 30;       // 현재 탄약 수
+bool firingEnabled = true;       // 발사 가능 상태
 
 #else
 #define LED_BUILTIN 4
@@ -43,10 +51,13 @@ const int batStatusPin[] = {D3, D4, D5};
 #define SERVICE_UUID "2ca354b0-5f62-11ef-b4d4-f7af9038ee7d"
 #define CHARACTERISTIC_UUID "35c34c80-5f62-11ef-b4d4-f7af9038ee7d"
 
-
 BLEServer *pServer = NULL;
 BLECharacteristic *pCharacteristic = NULL;
 bool deviceConnected = false;
+
+// 배터리 관련 설정
+const float MIN_BATTERY_VOLTAGE = 3.0;  // 최소 배터리 전압
+const float MAX_BATTERY_VOLTAGE = 4.2;  // 최대 배터리 전압
 
 bool getConnectionStatus() {
     return deviceConnected;
@@ -73,27 +84,81 @@ String getDeviceName() {
 }
 
 void clearTriggerCount() {
-    A3144::clearTriggerCount();
+    TriggerCounter::clearTriggerCount();
+    currentAmmoCount = maxAmmoCount;  // 트리거 카운트 초기화 시 탄약 수도 초기화
+    firingEnabled = true;            // 발사 가능 상태로 설정
+    digitalWrite(actionPin1, LOW);   // 액츄에이터 비활성화
 }
 
 int getTriggerCount() {
-    return A3144::getTriggerCount();
+    return TriggerCounter::getTriggerCount();
 }
 
+// 탄약 수 감소 함수
+void decreaseAmmoCount() {
+    currentAmmoCount--;
+    if (currentAmmoCount <= 0) {
+        currentAmmoCount = 0;
+        firingEnabled = false;
+        digitalWrite(actionPin1, HIGH);  // 액츄에이터 활성화하여 발사 중지
+    }
+}
 
+// 탄창 삽입 여부 확인 함수
+bool isMagazineInserted() {
+    return !digitalRead(magazineInsertedPin);  // LOW일 때 삽입된 상태
+}
+
+// 배터리 레벨 읽기 함수 (0-100%)
+int getBatteryLevel() {
+    float voltage = analogRead(batteryPin) * 3.3 / 4095 * 2;  // 전압 분배기 사용 시 곱하기 2
+    int level = map(voltage * 100, MIN_BATTERY_VOLTAGE * 100, MAX_BATTERY_VOLTAGE * 100, 0, 100);
+    level = constrain(level, 0, 100);  // 0-100 범위로 제한
+    return level;
+}
+
+// 네오픽셀 색상 업데이트 함수
+void updateNeoPixelColor(int batteryLevel) {
+    uint32_t color;
+    
+    if (batteryLevel >= 80) {
+        color = pixels.Color(0, 255, 0);  // 녹색 (충전 상태 좋음)
+    } else if (batteryLevel >= 50) {
+        color = pixels.Color(255, 255, 0);  // 노란색 (중간 충전 상태)
+    } else if (batteryLevel >= 20) {
+        color = pixels.Color(255, 165, 0);  // 주황색 (충전 필요)
+    } else {
+        color = pixels.Color(255, 0, 0);  // 빨간색 (충전 필요 긴급)
+    }
+    
+    pixels.setPixelColor(0, color);
+    pixels.show();
+}
+
+Task taskBatteryMonitor(1000, TASK_FOREVER, []() {
+    int batteryLevel = getBatteryLevel();
+    updateNeoPixelColor(batteryLevel);
+}, &g_ts, true);
 
 Task taskNotify(20, TASK_FOREVER, []() {
-
     static int oldValue = 0;
-    int _value = A3144::getTriggerCount();
-    if (_value != oldValue)
-    {
-        Serial.println("Magnetic Sensor: " + String(_value));
+    int _value = TriggerCounter::getTriggerCount();
+    
+    if (_value != oldValue) {
+        Serial.println("Trigger Count: " + String(_value));
+        
+        // 탄 수 감소
+        if (oldValue < _value && firingEnabled) {
+            decreaseAmmoCount();
+        }
+        
         oldValue = _value;
 
         if (deviceConnected) {
-            // int currentCount = triggerCount.load(std::memory_order_relaxed);  // atomic 값 읽기
-            String _data = "#," + String(_value) + ",0,0,0,0,0";
+            // BLE를 통해 현재 상태 전송
+            String _data = "#," + String(_value) + "," + String(currentAmmoCount) + 
+                          "," + String(firingEnabled) + "," + String(isMagazineInserted()) + 
+                          "," + String(getBatteryLevel()) + ",0";
             pCharacteristic->setValue(_data.c_str());
             pCharacteristic->notify();
         }
@@ -101,7 +166,6 @@ Task taskNotify(20, TASK_FOREVER, []() {
 }, &g_ts, true); 
 
 Task task_Cmd(100, TASK_FOREVER, []() {
-
     if (Serial.available() > 0) {
         String _strLine = Serial.readStringUntil('\n');
         _strLine.trim();
@@ -112,15 +176,11 @@ Task task_Cmd(100, TASK_FOREVER, []() {
         Serial.println("Response:");
         Serial.println(response);
     }
-
 }, &g_ts, true);
 
-Task task_LedBlink(500, TASK_FOREVER, []()
-              {
-                //   digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
-                digitalWrite(ledPins_status, !digitalRead(ledPins_status));
-              }, &g_ts, true);
-
+Task task_LedBlink(500, TASK_FOREVER, []() {
+    digitalWrite(ledPins_status, !digitalRead(ledPins_status));
+}, &g_ts, true);
 
 void printMtuSize(BLEServer *pServer) {
     uint16_t currentMtu = pServer->getPeerMTU(pServer->getConnId());
@@ -130,32 +190,26 @@ void printMtuSize(BLEServer *pServer) {
 
 class MyServerCallbacks : public BLEServerCallbacks {
     void onConnect(BLEServer *pServer) {
-
         task_LedBlink.disable();
         deviceConnected = true;
 
-        // digitalWrite(LED_BUILTIN, HIGH);
         digitalWrite(ledPins_status, HIGH);
         Serial.println("client connected");
         pServer->getAdvertising()->stop(); // 클라이언트 연결 시 광고 중지
 
-        // // 환영 메시지 설정 및 알림 전송
+        // 환영 메시지 설정 및 알림 전송
         pCharacteristic->setValue("welcome to ESP32 BLE Server");
-
-        // taskNotify.enable();
 
         printMtuSize(pServer);
     }
 
     void onDisconnect(BLEServer *pServer) {
         deviceConnected = false;
-        // digitalWrite(LED_BUILTIN, LOW);
         digitalWrite(ledPins_status, LOW);
         Serial.println("client disconnected");
         pServer->getAdvertising()->start(); // 클라이언트 연결 해제 시 광고 재시작
 
         task_LedBlink.enable();
-        // taskNotify.disable();
     }
 
     void onMtuChanged(BLEServer *pServer, uint16_t mtu) {
@@ -194,32 +248,20 @@ class MyCharateristicCallbacks : public BLECharacteristicCallbacks {
     }
 };
 
-// 배터리 정보를 읽는 함수 (이 함수는 실제 하드웨어에 맞게 구현해야 합니다)
-int getBatteryLevel() {
-    // 예시 코드: 실제로는 배터리 핀에서 아날로그 값을 읽어 변환해야 합니다
-    int rawValue = analogRead(batteryPin);
-    // 여기에서 rawValue를 실제 배터리 레벨(%)로 변환하는 로직을 구현해야 합니다
-    return map(rawValue, 0, 4095, 0, 100);  // 예시: 0-4095 범위를 0-100%로 변환
-}
-
-// modePin 상태를 읽는 함수
-bool getModeStatus() {
-    return digitalRead(modePin);
-}
-
 // the setup function runs once when you press reset or power the board
-void setup()
-{
+void setup() {
+    // GPIO 설정
+    pinMode(ledPins_status, OUTPUT);
+    pinMode(actionPin1, OUTPUT);
+    digitalWrite(actionPin1, LOW);  // 초기 상태: 액츄에이터 비활성화
+    
+    // 탄창 감지 핀 설정
+    pinMode(magazineInsertedPin, INPUT_PULLUP);
 
-    pinMode(ledPins_status, OUTPUT);  
-    
-    //triggerPin interrupt
-
-    
-    
-    //modePin
-    pinMode(modePin, INPUT_PULLUP);
-    
+    // 네오픽셀 초기화
+    pixels.begin();
+    pixels.clear();
+    pixels.show();
 
     Serial.begin(115200);
 
@@ -228,9 +270,15 @@ void setup()
     Serial.println(":-]");
     Serial.println("Serial connected");
 
-    u32_t debounceDelay = g_config.get<u32_t>("debounceDelay",50);
+    // 설정에서 디바운스 딜레이 읽기
+    u32_t debounceDelay = g_config.get<u32_t>("debounceDelay", 50);
+    
+    // 설정에서 최대 탄약 수 읽기 (없으면 기본값 30)
+    maxAmmoCount = g_config.get<int>("maxAmmoCount", 30);
+    currentAmmoCount = maxAmmoCount;  // 현재 탄약 수 초기화
 
-    A3144::setup(triggerPin, debounceDelay);
+    // 트리거 카운터 설정
+    TriggerCounter::setup(triggerPin, debounceDelay);
     
     g_ts.startNow();
 
@@ -264,10 +312,12 @@ void setup()
     pServer->getAdvertising()->start();
 
     Serial.println("BLE Ready....");
+    
+    // 초기 배터리 상태 확인 및 네오픽셀 색상 설정
+    updateNeoPixelColor(getBatteryLevel());
 }
 
 // the loop function runs over and over again forever
-void loop()
-{
-  g_ts.execute();
+void loop() {
+    g_ts.execute();
 }
