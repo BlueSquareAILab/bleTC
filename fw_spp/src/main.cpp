@@ -75,7 +75,8 @@ Task task_CheckBTConnection(500, TASK_FOREVER, []() {
     Serial.println("Bluetooth device is connected");
 
 #if defined(LOLIN_D32) | defined(LOLIN_D32_PRO) | defined(WROVER_KIT)
-    digitalWrite(ledPins_status, LOW); // LOLIN D32의 내장 LED를 끈다.
+    // digitalWrite(ledPins_status, LOW); // LOLIN D32의 내장 LED를 끈다.
+    digitalWrite(ledPins_status, HIGH);
 #else
     digitalWrite(ledPins_status, HIGH); // LOLIN D32의 내장 LED를 끈다.
 #endif
@@ -108,8 +109,15 @@ Task taskNotify(20, TASK_FOREVER, []() {
         }
     }
     else {
-      if(deviceConnected)
-        SerialBT.println("c");
+      if(deviceConnected) {
+        if(A3144::getSensorValue() == 0) {
+          SerialBT.println("d");
+        }
+        else {
+          SerialBT.println("c");
+        }
+      }
+        // SerialBT.println("c");
     }
 }, &g_ts, true); 
 

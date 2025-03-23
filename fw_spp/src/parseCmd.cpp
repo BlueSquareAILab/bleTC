@@ -8,7 +8,7 @@ tonkey g_MainParser;
 
 extern Config g_config;
 
-const char *__VERSION = "1.0.0";
+const char *__VERSION = "1.0.1";
 
 String parseCmd(String _strLine) {
 

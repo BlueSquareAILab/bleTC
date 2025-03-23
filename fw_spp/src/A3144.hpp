@@ -4,6 +4,7 @@ namespace A3144 {
     // const int triggerPin = D8;
     // volatile int triggerCount = 0;
     std::atomic<int> triggerCount(0);  // volatile int triggerCount = 0; 대신 사용
+    int _triggerPin = -1;
 
     // 디바운스를 위한 변수들
     volatile unsigned long lastDebounceTime = 0;
@@ -19,6 +20,7 @@ namespace A3144 {
     }
 
     void setup(int triggerPin,u32_t _debounceDelay = 50) {
+        _triggerPin = triggerPin;
         debounceDelay = _debounceDelay;
         pinMode(triggerPin, INPUT_PULLUP);
         // attachInterrupt(digitalPinToInterrupt(triggerPin), handleTriggerInterrupt, FALLING);
@@ -31,5 +33,12 @@ namespace A3144 {
 
     void clearTriggerCount() {
         triggerCount.store(0, std::memory_order_relaxed);
+    }
+
+    int getSensorValue() {
+        if(_triggerPin == -1) {
+            return -1;
+        }
+        return digitalRead(_triggerPin);
     }
 }
