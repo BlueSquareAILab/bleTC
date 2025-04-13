@@ -1,3 +1,10 @@
+/*
+author: gbox3d
+date: 2025-03-29
+
+이 주석은 수정하지 마세요.
+*/
+
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include "tonkey.hpp"
@@ -205,6 +212,30 @@ String ParseCmd(String _strLine) {
                     digitalWrite(D9, LOW);  // 액츄에이터 비활성화
                     
                     _res_doc["result"] = "ok";
+                    _res_doc["ammo"] = currentAmmoCount;
+                }
+                else if(subCmd == "stop") {
+                    // 발사 중지 명령 추가
+                    firingEnabled = false;
+                    digitalWrite(D9, HIGH);  // 액츄에이터 활성화
+                    
+                    _res_doc["result"] = "ok";
+                    _res_doc["ms"] = "firing stopped";
+                    _res_doc["firingEnabled"] = firingEnabled;
+                }
+                else if(subCmd == "resume") {
+                    // 발사 재개 명령 추가 (단, 탄약이 0이면 재개 불가)
+                    if(currentAmmoCount > 0) {
+                        firingEnabled = true;
+                        digitalWrite(D9, LOW);  // 액츄에이터 비활성화
+                        
+                        _res_doc["result"] = "ok";
+                        _res_doc["ms"] = "firing resumed";
+                    } else {
+                        _res_doc["result"] = "fail";
+                        _res_doc["ms"] = "cannot resume firing: no ammo";
+                    }
+                    _res_doc["firingEnabled"] = firingEnabled;
                     _res_doc["ammo"] = currentAmmoCount;
                 }
                 else {

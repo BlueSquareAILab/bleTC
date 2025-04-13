@@ -25,14 +25,13 @@ extern String ParseCmd(String _strLine);
 
 #ifdef SEED_XIAO_ESP32C3
 
-const int ledPins_status = D10;  // 연결상태 LED
-const int actionPin1 = D9;       // 액츄에이터 1 (발사 중지용)
+const int actionPin1 = D3;       // 액츄에이터 1 (발사 중지용)
 
-const int triggerPin = D2;       // 트리거 감지 핀
-const int magazineInsertedPin = D3;  // 탄창 삽입 여부 감지 핀 (이전 modePin)
+const int triggerPin = D1;       // 트리거 감지 핀
+const int magazineInsertedPin = D2;  // 탄창 삽입 여부 감지 핀 (이전 modePin)
 
 const int batteryPin = A0;       // 배터리 전압 측정 핀
-const int neoPixelPin = D1;      // 네오픽셀 제어 핀 (이전 batStatusPin)
+const int neoPixelPin = D10;      // 네오픽셀 제어 핀 (이전 batStatusPin)
 
 // 네오픽셀 설정 (픽셀 수에 맞게 조정)
 #define NUM_PIXELS 1
@@ -42,6 +41,9 @@ Adafruit_NeoPixel pixels(NUM_PIXELS, neoPixelPin, NEO_GRB + NEO_KHZ800);
 int maxAmmoCount = 30;           // 최대 탄약 수
 int currentAmmoCount = 30;       // 현재 탄약 수
 bool firingEnabled = true;       // 발사 가능 상태
+
+// 네오픽셀 상태 플래그
+bool showBatteryColor = true;    // true면 배터리 상태, false면 연결 상태 표시
 
 #else
 #define LED_BUILTIN 4
@@ -117,27 +119,51 @@ int getBatteryLevel() {
     return level;
 }
 
+// 배터리 레벨에 따른 색상 반환 함수
+uint32_t getBatteryColor(int batteryLevel) {
+    if (batteryLevel >= 80) {
+        return pixels.Color(0, 255, 0);  // 녹색 (충전 상태 좋음)
+    } else if (batteryLevel >= 50) {
+        return pixels.Color(255, 255, 0);  // 노란색 (중간 충전 상태)
+    } else if (batteryLevel >= 20) {
+        return pixels.Color(255, 165, 0);  // 주황색 (충전 필요)
+    } else {
+        return pixels.Color(255, 0, 0);  // 빨간색 (충전 필요 긴급)
+    }
+}
+
+// 연결 상태에 따른 색상 반환 함수
+uint32_t getConnectionColor(bool connected) {
+    if (connected) {
+        return pixels.Color(0, 0, 255);  // 파란색 (연결됨)
+    } else {
+        return pixels.Color(0, 0, 0);    // 검은색 (연결 안됨)
+    }
+}
+
 // 네오픽셀 색상 업데이트 함수
-void updateNeoPixelColor(int batteryLevel) {
+void updateNeoPixelColor() {
+    int batteryLevel = getBatteryLevel();
     uint32_t color;
     
-    if (batteryLevel >= 80) {
-        color = pixels.Color(0, 255, 0);  // 녹색 (충전 상태 좋음)
-    } else if (batteryLevel >= 50) {
-        color = pixels.Color(255, 255, 0);  // 노란색 (중간 충전 상태)
-    } else if (batteryLevel >= 20) {
-        color = pixels.Color(255, 165, 0);  // 주황색 (충전 필요)
+    if (showBatteryColor) {
+        // 배터리 상태 표시
+        color = getBatteryColor(batteryLevel);
     } else {
-        color = pixels.Color(255, 0, 0);  // 빨간색 (충전 필요 긴급)
+        // 연결 상태 표시
+        color = getConnectionColor(deviceConnected);
     }
     
     pixels.setPixelColor(0, color);
     pixels.show();
 }
 
-Task taskBatteryMonitor(1000, TASK_FOREVER, []() {
-    int batteryLevel = getBatteryLevel();
-    updateNeoPixelColor(batteryLevel);
+// 배터리 모니터링 태스크 - 더 이상 필요 없음 (LED 깜빡임 태스크에 통합)
+
+// 네오픽셀 상태 토글 태스크 (0.5초마다 배터리 상태와 연결 상태 번갈아 표시)
+Task task_NeoPixelBlink(500, TASK_FOREVER, []() {
+    showBatteryColor = !showBatteryColor;  // 상태 토글
+    updateNeoPixelColor();
 }, &g_ts, true);
 
 Task taskNotify(20, TASK_FOREVER, []() {
@@ -145,7 +171,7 @@ Task taskNotify(20, TASK_FOREVER, []() {
     int _value = TriggerCounter::getTriggerCount();
     
     if (_value != oldValue) {
-        Serial.println("Trigger Count: " + String(_value));
+        // Serial.println("Trigger Count: " + String(_value));
         
         // 탄 수 감소
         if (oldValue < _value && firingEnabled) {
@@ -178,10 +204,6 @@ Task task_Cmd(100, TASK_FOREVER, []() {
     }
 }, &g_ts, true);
 
-Task task_LedBlink(500, TASK_FOREVER, []() {
-    digitalWrite(ledPins_status, !digitalRead(ledPins_status));
-}, &g_ts, true);
-
 void printMtuSize(BLEServer *pServer) {
     uint16_t currentMtu = pServer->getPeerMTU(pServer->getConnId());
     Serial.print("current MTU size: ");
@@ -190,26 +212,26 @@ void printMtuSize(BLEServer *pServer) {
 
 class MyServerCallbacks : public BLEServerCallbacks {
     void onConnect(BLEServer *pServer) {
-        task_LedBlink.disable();
         deviceConnected = true;
-
-        digitalWrite(ledPins_status, HIGH);
         Serial.println("client connected");
         pServer->getAdvertising()->stop(); // 클라이언트 연결 시 광고 중지
 
         // 환영 메시지 설정 및 알림 전송
         pCharacteristic->setValue("welcome to ESP32 BLE Server");
+        
+        // 연결 상태 변경되었으므로 네오픽셀 색상 업데이트
+        updateNeoPixelColor();
 
         printMtuSize(pServer);
     }
 
     void onDisconnect(BLEServer *pServer) {
         deviceConnected = false;
-        digitalWrite(ledPins_status, LOW);
         Serial.println("client disconnected");
         pServer->getAdvertising()->start(); // 클라이언트 연결 해제 시 광고 재시작
-
-        task_LedBlink.enable();
+        
+        // 연결 상태 변경되었으므로 네오픽셀 색상 업데이트
+        updateNeoPixelColor();
     }
 
     void onMtuChanged(BLEServer *pServer, uint16_t mtu) {
@@ -251,7 +273,6 @@ class MyCharateristicCallbacks : public BLECharacteristicCallbacks {
 // the setup function runs once when you press reset or power the board
 void setup() {
     // GPIO 설정
-    pinMode(ledPins_status, OUTPUT);
     pinMode(actionPin1, OUTPUT);
     digitalWrite(actionPin1, LOW);  // 초기 상태: 액츄에이터 비활성화
     
@@ -313,8 +334,8 @@ void setup() {
 
     Serial.println("BLE Ready....");
     
-    // 초기 배터리 상태 확인 및 네오픽셀 색상 설정
-    updateNeoPixelColor(getBatteryLevel());
+    // 초기 네오픽셀 색상 설정
+    updateNeoPixelColor();
 }
 
 // the loop function runs over and over again forever
