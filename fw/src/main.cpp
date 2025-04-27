@@ -23,7 +23,7 @@ Config g_config;
 
 extern String ParseCmd(String _strLine);
 
-#ifdef SEED_XIAO_ESP32C3
+#if defined(SEED_XIAO_ESP32C3)
 
 const int actionPin1 = D3;       // 액츄에이터 1 (발사 중지용)
 
@@ -44,6 +44,30 @@ bool firingEnabled = true;       // 발사 가능 상태
 
 // 네오픽셀 상태 플래그
 bool showBatteryColor = true;    // true면 배터리 상태, false면 연결 상태 표시
+
+#elif defined(TENSTAR_ESP32C3)
+
+const int actionPin1 = 4;       // 액츄에이터 1 (발사 중지용)
+
+const int triggerPin = 1;       // 트리거 감지 핀
+const int magazineInsertedPin = 3;  // 탄창 삽입 여부 감지 핀 (이전 modePin)
+
+const int batteryPin = 0;       // 배터리 전압 측정 핀
+const int neoPixelPin = 10;      // 네오픽셀 제어 핀 (이전 batStatusPin)
+
+// 네오픽셀 설정 (픽셀 수에 맞게 조정)
+#define NUM_PIXELS 1
+Adafruit_NeoPixel pixels(NUM_PIXELS, neoPixelPin, NEO_GRB + NEO_KHZ800);
+
+// 탄약 관련 설정
+int maxAmmoCount = 30;           // 최대 탄약 수
+int currentAmmoCount = 30;       // 현재 탄약 수
+bool firingEnabled = true;       // 발사 가능 상태
+
+// 네오픽셀 상태 플래그
+bool showBatteryColor = true;    // true면 배터리 상태, false면 연결 상태 표시
+
+#define LED_BUILTIN 8
 
 #else
 #define LED_BUILTIN 4
