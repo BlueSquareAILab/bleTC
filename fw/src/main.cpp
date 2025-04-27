@@ -111,6 +111,17 @@ bool isMagazineInserted() {
     return !digitalRead(magazineInsertedPin);  // LOW일 때 삽입된 상태
 }
 
+void resumeFiring() {
+    firingEnabled = true;  // 발사 가능 상태로 설정
+    digitalWrite(actionPin1, LOW);  // 액츄에이터 비활성화
+}
+
+void stopFiring() {
+    firingEnabled = false;  // 발사 불가능 상태로 설정
+    digitalWrite(actionPin1, HIGH);  // 액츄에이터 활성화하여 발사 중지
+}
+
+
 // 배터리 레벨 읽기 함수 (0-100%)
 int getBatteryLevel() {
     float voltage = analogRead(batteryPin) * 3.3 / 4095 * 2;  // 전압 분배기 사용 시 곱하기 2
@@ -168,10 +179,13 @@ Task task_NeoPixelBlink(500, TASK_FOREVER, []() {
 
 Task taskNotify(20, TASK_FOREVER, []() {
     static int oldValue = 0;
+    static bool oldMagazineInserted = false;
     int _value = TriggerCounter::getTriggerCount();
     
-    if (_value != oldValue) {
+    if (_value != oldValue || oldMagazineInserted != isMagazineInserted()) {
         // Serial.println("Trigger Count: " + String(_value));
+
+        oldMagazineInserted = isMagazineInserted();
         
         // 탄 수 감소
         if (oldValue < _value && firingEnabled) {
