@@ -141,11 +141,16 @@ public:
             return defaultValue;
         }
 
-        if (!doc.containsKey(key))
+        // if (!doc.containsKey(key))
+        // {
+        //     return defaultValue;
+        // }
+        // 수정:
+        if (doc[key].isNull())
         {
             return defaultValue;
         }
-
+ 
         return doc[key].as<T>();
     }
 
@@ -161,7 +166,8 @@ public:
             return false;
         }
 
-        return doc.containsKey(key);
+        // return doc.containsKey(key);
+        return doc[key].isNull() == false;
     }
 
     void getArray(const char *key, JsonDocument &_doc) const

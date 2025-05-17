@@ -48,8 +48,8 @@ String ParseCmd(String _strLine) {
             /* code */
             _res_doc["result"] = "ok";
             _res_doc["os"] = "cronos-v1";
-            _res_doc["app"] = "bleTC";
-            _res_doc["version"] = "1.0.2";
+            _res_doc["app"] = "bleTC_smartMagazine";
+            _res_doc["version"] = "1.0.3";
             _res_doc["author"] = "gbox3d";
             _res_doc["chipid"] = getChipID();
             
