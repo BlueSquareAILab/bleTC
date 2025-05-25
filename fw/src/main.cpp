@@ -125,6 +125,11 @@ Task task_EndPulse(TASK_IMMEDIATE, TASK_ONCE, []() {
     digitalWrite(actionPin1, LOW);  // 펄스 종료 (액츄에이터 비활성화)
 }, &g_ts, false);  // 초기에는 비활성화 상태
 
+void doActuatorPulse(int duration = 1000) {
+    digitalWrite(actionPin1, HIGH);  // 액츄에이터 활성화
+    task_EndPulse.restartDelayed(duration);  // 주어진 시간 후에 펄스 종료 태스크 예약
+}
+
 // 수정된 decreaseAmmoCount 함수
 void decreaseAmmoCount() {
     currentAmmoCount--;
@@ -133,12 +138,14 @@ void decreaseAmmoCount() {
         firingEnabled = false;
         
         // 펄스 시작
-        digitalWrite(actionPin1, HIGH);  // 액츄에이터 활성화
+        doActuatorPulse();
         
-        // 1초 후에 펄스 종료 태스크 예약
-        task_EndPulse.restartDelayed(1000);
+        // // 1초 후에 펄스 종료 태스크 예약
+        // task_EndPulse.restartDelayed(1000);
     }
 }
+
+
 
 // 탄창 삽입 여부 확인 함수
 bool isMagazineInserted() {

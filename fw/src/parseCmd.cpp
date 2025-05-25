@@ -36,6 +36,9 @@ extern bool firingEnabled;     // 발사 가능 상태
 extern void stopFiring();        // 발사 중지 함수
 extern void resumeFiring();      // 발사 재개 함수
 
+
+extern void doActuatorPulse(int duration=1000);  // 액츄에이터 펄스 함수
+
 String ParseCmd(String _strLine) {
     
     JsonDocument _res_doc;
@@ -253,6 +256,21 @@ String ParseCmd(String _strLine) {
                 _res_doc["ammo"] = currentAmmoCount;
                 _res_doc["maxAmmo"] = maxAmmoCount;
                 _res_doc["firingEnabled"] = firingEnabled;
+            }
+        }
+        else if(cmd == "pulse") {
+            if(g_MainParser.getTokenCount() > 1) {
+                int duration = g_MainParser.getToken(1).toInt();
+                if(duration <= 0) {
+                    _res_doc["result"] = "fail";
+                    _res_doc["ms"] = "duration must be positive";
+                } else {
+                    doActuatorPulse(duration);
+                    _res_doc["result"] = "ok";
+                }
+            } else {
+                doActuatorPulse();
+                _res_doc["result"] = "ok";
             }
         }
         else if(cmd == "ble") {
