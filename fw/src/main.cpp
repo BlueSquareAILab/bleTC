@@ -7,7 +7,7 @@
 #include <BLEUtils.h>
 #include <BLE2902.h>
 
-#include <WiFi.h>
+// #include <WiFi.h>
 #include <vector>
 
 #include <TaskScheduler.h>
@@ -24,16 +24,29 @@ Config g_config;
 
 extern String ParseCmd(String _strLine);
 
+int triggerPin = -1; // A3144 센서 핀 번호, 기본값은 -1로 설정,
+                     // 실제 핀 번호는 하드웨어에 따라 다를 수 있음
+
+int modePin = -1; // 모드 핀 번호, 기본값은 -1로 설정,
+int batteryPin = -1; // 배터리 핀 번호, 기본값은 -1로 설정,
+
+
 #ifdef SEED_XIAO_ESP32C3
 
 const int ledPins_status = D10;
 // const int analogPins[] = {D0, D1};
 // const int buttonPins[] = {D8, D2};
-const int triggerPin = D8;
-const int modePin = D2;
-const int batteryPin = A0;
-const int batStatusPin[] = {D3, D4, D5};
+// const int triggerPin = D8;
+// const int modePin = D2;
+// const int batteryPin = A0;
+// const int batStatusPin[] = {D3, D4, D5};
 
+#elif defined(TENSTAR_ESP32C3)
+
+const int ledPins_status = 8;
+// const int modePin = D2;
+// const int batteryPin = A0;
+// const int batStatusPin[] = {D3, D4, D5};
 
 #else
 #define LED_BUILTIN 4
@@ -210,17 +223,6 @@ bool getModeStatus() {
 // the setup function runs once when you press reset or power the board
 void setup()
 {
-
-    pinMode(ledPins_status, OUTPUT);  
-    
-    //triggerPin interrupt
-
-    
-    
-    //modePin
-    pinMode(modePin, INPUT_PULLUP);
-    
-
     Serial.begin(115200);
 
     g_config.load();
@@ -230,8 +232,24 @@ void setup()
 
     u32_t debounceDelay = g_config.get<u32_t>("debounceDelay",50);
 
+    triggerPin = g_config.get<int>("triggerPin", 0);
+    modePin = g_config.get<int>("modePin", D2);
+    batteryPin = g_config.get<int>("batteryPin", A0);
+    // if (triggerPin < 0 || modePin < 0 || batteryPin < 0) {
+    //     Serial.println("Error: triggerPin, modePin, or batteryPin is not set correctly.");
+    //     return;
+    // }
+
+    Serial.println("triggerPin: " + String(triggerPin));
+    Serial.println("modePin: " + String(modePin));
+    Serial.println("batteryPin: " + String(batteryPin));
+
+    // 핀 모드 설정
+    pinMode(modePin, INPUT_PULLUP); // 모드 핀을 풀업 입력으로 설정
+
     A3144::setup(triggerPin, debounceDelay);
-    
+
+
     g_ts.startNow();
 
     // BLE 장치 생성
