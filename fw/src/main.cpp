@@ -7,7 +7,7 @@
 #include <BLEUtils.h>
 #include <BLE2902.h>
 
-#include <WiFi.h>
+// #include <WiFi.h>
 #include <vector>
 
 #include <TaskScheduler.h>
