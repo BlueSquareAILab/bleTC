@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <Adafruit_NeoPixel.h>
 
 // #include <esp_system.h>
 
@@ -13,14 +14,24 @@
 #include <TaskScheduler.h>
 #include <ArduinoJson.h>
 
+#include <esp_sleep.h>  // <-- 추가
+
 #include "A3144.hpp"
 
 
 #include "config.hpp"
 #include "etc.hpp"
 
+
+// 깨어날 주기: 1시간
+#define WAKE_INTERVAL_US      (60 * 60ULL * 1000000ULL)
+// 광고(duration): 3분
+#define ADVERTISE_DURATION_MS (3 * 60 * 1000UL)
+
+
 Scheduler g_ts;
 Config g_config;
+
 
 extern String ParseCmd(String _strLine);
 
@@ -111,7 +122,10 @@ Task taskNotify(20, TASK_FOREVER, []() {
             pCharacteristic->notify();
         }
     }
-}, &g_ts, true); 
+}, &g_ts, false); 
+
+// 전방 선언부
+// extern Task task_DisableSerial;
 
 Task task_Cmd(100, TASK_FOREVER, []() {
 
@@ -124,6 +138,9 @@ Task task_Cmd(100, TASK_FOREVER, []() {
         String response = ParseCmd(_strLine);
         Serial.println("Response:");
         Serial.println(response);
+
+        // 슬립 스케쥴 중지
+        // task_DisableSerial.disable();
     }
 
 }, &g_ts, true);
@@ -134,6 +151,19 @@ Task task_LedBlink(500, TASK_FOREVER, []()
                 digitalWrite(ledPins_status, !digitalRead(ledPins_status));
               }, &g_ts, true);
 
+
+// // 10초 후에 시리얼 명령어 처리 태스크(task_Cmd)를 비활성화하여 전력 절약
+// Task task_DisableSerial(0, TASK_ONCE, []() {
+//     if (task_Cmd.isEnabled()) {
+//         task_Cmd.disable();
+//         Serial.println("Serial command task disabled to save power.");
+
+//         task_LedBlink.disable(); // LED 깜빡임 태스크도 비활성화
+//         Serial.println("LED blink task disabled to save power.");
+
+//         digitalWrite(ledPins_status, LOW); // LED 상태를 HIGH로 설정
+//     }
+// }, &g_ts, false);
 
 void printMtuSize(BLEServer *pServer) {
     uint16_t currentMtu = pServer->getPeerMTU(pServer->getConnId());
@@ -155,7 +185,7 @@ class MyServerCallbacks : public BLEServerCallbacks {
         // // 환영 메시지 설정 및 알림 전송
         pCharacteristic->setValue("welcome to ESP32 BLE Server");
 
-        // taskNotify.enable();
+        taskNotify.enable();
 
         printMtuSize(pServer);
     }
@@ -168,7 +198,7 @@ class MyServerCallbacks : public BLEServerCallbacks {
         pServer->getAdvertising()->start(); // 클라이언트 연결 해제 시 광고 재시작
 
         task_LedBlink.enable();
-        // taskNotify.disable();
+        taskNotify.disable();
     }
 
     void onMtuChanged(BLEServer *pServer, uint16_t mtu) {
@@ -235,10 +265,7 @@ void setup()
     triggerPin = g_config.get<int>("triggerPin", 0);
     modePin = g_config.get<int>("modePin", D2);
     batteryPin = g_config.get<int>("batteryPin", A0);
-    // if (triggerPin < 0 || modePin < 0 || batteryPin < 0) {
-    //     Serial.println("Error: triggerPin, modePin, or batteryPin is not set correctly.");
-    //     return;
-    // }
+    
 
     Serial.println("triggerPin: " + String(triggerPin));
     Serial.println("modePin: " + String(modePin));
@@ -249,8 +276,14 @@ void setup()
 
     A3144::setup(triggerPin, debounceDelay);
 
+    pinMode(ledPins_status, OUTPUT);
+    digitalWrite(ledPins_status, LOW); // LED 초기 상태를 LOW로 설정
+
 
     g_ts.startNow();
+
+    // task_DisableSerial.enableDelayed(10000); // 10초 후에 시리얼 명령어 처리 태스크(task_Cmd)를 비활성화하여 전력 절약
+
 
     // BLE 장치 생성
     BLEDevice::init(getDeviceName().c_str());
@@ -282,10 +315,57 @@ void setup()
     pServer->getAdvertising()->start();
 
     Serial.println("BLE Ready....");
+
+    
 }
 
 // the loop function runs over and over again forever
 void loop()
 {
-  g_ts.execute();
+  //g_ts.execute();
+  
+
+  // --- 1) 광고 시작 ---
+    Serial.println("Advertising start for 1 minute...");
+    pServer->getAdvertising()->start();
+
+    task_Cmd.enable(); // 광고 중지 시 시리얼 명령어 처리 태스크(task_Cmd) 활성화
+    task_LedBlink.enable(); // 광고 중지 시 LED 깜빡임 태
+
+
+    // 1분 동안 TaskScheduler도 돌려주면서 광고 유지
+    unsigned long start = millis();
+    while (millis() - start < ADVERTISE_DURATION_MS) {
+        g_ts.execute();
+    }
+
+    task_Cmd.disable(); // 광고 중지 시 시리얼 명령어 처리 태스크(task_Cmd) 비활성화
+    task_LedBlink.disable(); // 광고 중지 시 LED 깜빡임 태스크 비활성화
+
+    pinMode(ledPins_status, OUTPUT); 
+    digitalWrite(ledPins_status, LOW);
+    gpio_hold_en((gpio_num_t)ledPins_status);
+
+    Serial.println("Advertising duration completed, stopping advertising...");
+
+    // --- 2) 광고 중지 ---
+    pServer->getAdvertising()->stop();
+    Serial.println("Advertising stopped, entering light sleep for 5 minutes...");
+
+    gpio_wakeup_enable((gpio_num_t)triggerPin, GPIO_INTR_LOW_LEVEL);     // LOW 레벨 변화 감지 :contentReference[oaicite:12]{index=12}
+    esp_sleep_enable_gpio_wakeup();                                      // GPIO 웨이크업 활성화 :contentReference[oaicite:13]{index=13}
+
+    // --- 3) Light-sleep 설정 & 진입 ---
+    esp_sleep_enable_timer_wakeup(WAKE_INTERVAL_US);
+    esp_light_sleep_start();
+
+    // --- 4) Light-sleep에서 깨어남 ---
+    Serial.println("Woke up from light sleep!");
+
+    esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_GPIO);              // GPIO 웨이크업 해제 :contentReference[oaicite:16]{index=16}
+    esp_sleep_get_wakeup_cause();                                        // 깨어난 원인 확인 :contentReference[oaicite:17]{index=17}
+
+    gpio_hold_dis((gpio_num_t)ledPins_status);
+    pinMode(ledPins_status, OUTPUT);
+    // digitalWrite(ledPins_status, HIGH);  // 필요 시 원래 상태로 복구
 }
