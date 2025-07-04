@@ -7,7 +7,6 @@
 #include <BLEUtils.h>
 #include <BLE2902.h>
 
-// #include <WiFi.h>
 #include <vector>
 
 #include <TaskScheduler.h>
@@ -18,10 +17,18 @@
 #include "config.hpp"
 #include "etc.hpp"
 
+#include <esp_sleep.h> 
+
 Scheduler g_ts;
 Config g_config;
 
+// 마지막 활동 시간을 추적하기 위한 전역 변수 및 타임아웃 설정
+unsigned long lastActivityTime = 0;
+const unsigned long INACTIVITY_SLEEP_DELAY_MS =  10 * 1000UL; // 1분 동안 활동이 없으면 절전 모드로 전환
+bool g_isAdvertising = false; // 광고 상태를 직접 추적하는 플래그
+
 extern String ParseCmd(String _strLine);
+void handleStateChanges(); // [수정] 상태 변경 처리 함수 선언
 
 #if defined(SEED_XIAO_ESP32C3)
 
@@ -53,7 +60,7 @@ const int triggerPin = 1;       // 트리거 감지 핀
 const int magazineInsertedPin = 3;  // 탄창 삽입 여부 감지 핀 (이전 modePin)
 
 const int batteryPin = 0;       // 배터리 전압 측정 핀
-const int neoPixelPin = 10;      // 네오픽셀 제어 핀 (이전 batStatusPin)
+const int neoPixelPin = 8;      // 네오픽셀 제어 핀 (이전 batStatusPin)
 
 // 네오픽셀 설정 (픽셀 수에 맞게 조정)
 #define NUM_PIXELS 1
@@ -82,8 +89,8 @@ BLECharacteristic *pCharacteristic = NULL;
 bool deviceConnected = false;
 
 // 배터리 관련 설정
-const float MIN_BATTERY_VOLTAGE = 3.0;  // 최소 배터리 전압
-const float MAX_BATTERY_VOLTAGE = 4.2;  // 최대 배터리 전압
+const float MIN_BATTERY_VOLTAGE = 1.0;  // 최소 배터리 전압
+const float MAX_BATTERY_VOLTAGE = 3.7;  // 최대 배터리 전압
 
 bool getConnectionStatus() {
     return deviceConnected;
@@ -102,7 +109,10 @@ String getAddress() {
 }
 
 String getMtuSize() {
-    return String(pServer->getPeerMTU(pServer->getConnId()));
+    if (pServer) {
+        return String(pServer->getPeerMTU(pServer->getConnId()));
+    }
+    return "0";
 }
 
 String getDeviceName() {
@@ -139,13 +149,8 @@ void decreaseAmmoCount() {
         
         // 펄스 시작
         doActuatorPulse();
-        
-        // // 1초 후에 펄스 종료 태스크 예약
-        // task_EndPulse.restartDelayed(1000);
     }
 }
-
-
 
 // 탄창 삽입 여부 확인 함수
 bool isMagazineInserted() {
@@ -154,20 +159,24 @@ bool isMagazineInserted() {
 
 void resumeFiring() {
     firingEnabled = true;  // 발사 가능 상태로 설정
-    // digitalWrite(actionPin1, LOW);  // 액츄에이터 비활성화
 }
 
 void stopFiring() {
     firingEnabled = false;  // 발사 불가능 상태로 설정
-    // digitalWrite(actionPin1, HIGH);  // 액츄에이터 활성화하여 발사 중지
 }
 
 
 // 배터리 레벨 읽기 함수 (0-100%)
 int getBatteryLevel() {
-    float voltage = analogRead(batteryPin) * 3.3 / 4095 * 2;  // 전압 분배기 사용 시 곱하기 2
+    uint32_t Vbatt = 0;
+    for(int i = 0; i < 16; i++) {
+        Vbatt = Vbatt + analogReadMilliVolts(A0); // ADC with correction   
+    }
+    float voltage = 2 * Vbatt / 16 / 1000.0;     // attenuation ratio 1/2, mV --> V
+    
     int level = map(voltage * 100, MIN_BATTERY_VOLTAGE * 100, MAX_BATTERY_VOLTAGE * 100, 0, 100);
     level = constrain(level, 0, 100);  // 0-100 범위로 제한
+    
     return level;
 }
 
@@ -210,22 +219,34 @@ void updateNeoPixelColor() {
     pixels.show();
 }
 
-// 배터리 모니터링 태스크 - 더 이상 필요 없음 (LED 깜빡임 태스크에 통합)
+void setupNeoPixel() {
+    pixels.begin();
+    pixels.clear();
+    pixels.show();
+    
+    // 초기 색상 설정
+    updateNeoPixelColor();
+}
 
-// 네오픽셀 상태 토글 태스크 (0.5초마다 배터리 상태와 연결 상태 번갈아 표시)
-Task task_NeoPixelBlink(500, TASK_FOREVER, []() {
+void offNeoPixel() {
+    pixels.clear();
+    pixels.show();
+}
+
+// 네오픽셀 상태 토글 태스크 (1 초마다 배터리 상태와 연결 상태 번갈아 표시)
+Task task_NeoPixelBlink(1000, TASK_FOREVER, []() {
     showBatteryColor = !showBatteryColor;  // 상태 토글
     updateNeoPixelColor();
-}, &g_ts, true);
+}, &g_ts, false);
 
-Task taskNotify(10, TASK_FOREVER, []() {
+// [수정] taskNotify가 하던 일을 처리하는 함수
+void handleStateChanges() {
     static int oldValue = 0;
     static bool oldMagazineInserted = false;
     int _value = TriggerCounter::getTriggerCount();
     
     if (_value != oldValue || oldMagazineInserted != isMagazineInserted()) {
-        // Serial.println("Trigger Count: " + String(_value));
-
+        lastActivityTime = millis(); // 트리거 또는 탄창 삽입 활동 시 시간 리셋
         oldMagazineInserted = isMagazineInserted();
         
         // 탄 수 감소
@@ -244,10 +265,11 @@ Task taskNotify(10, TASK_FOREVER, []() {
             pCharacteristic->notify();
         }
     }
-}, &g_ts, true); 
+}
 
-Task task_Cmd(100, TASK_FOREVER, []() {
+Task task_Cmd(300, TASK_FOREVER, []() {
     if (Serial.available() > 0) {
+        lastActivityTime = millis(); // 시리얼 입력 활동 시 시간 리셋
         String _strLine = Serial.readStringUntil('\n');
         _strLine.trim();
         Serial.println("Received Serial command:");
@@ -257,19 +279,23 @@ Task task_Cmd(100, TASK_FOREVER, []() {
         Serial.println("Response:");
         Serial.println(response);
     }
-}, &g_ts, true);
+}, &g_ts, false);
 
 void printMtuSize(BLEServer *pServer) {
-    uint16_t currentMtu = pServer->getPeerMTU(pServer->getConnId());
-    Serial.print("current MTU size: ");
-    Serial.println(currentMtu);
+    if (pServer) {
+        uint16_t currentMtu = pServer->getPeerMTU(pServer->getConnId());
+        Serial.print("current MTU size: ");
+        Serial.println(currentMtu);
+    }
 }
 
 class MyServerCallbacks : public BLEServerCallbacks {
     void onConnect(BLEServer *pServer) {
+        lastActivityTime = millis(); // BLE 연결 시 시간 리셋
         deviceConnected = true;
+        g_isAdvertising = false; // 연결 시 광고가 중지되므로 플래그 업데이트
         Serial.println("client connected");
-        pServer->getAdvertising()->stop(); // 클라이언트 연결 시 광고 중지
+        // pServer->getAdvertising()->stop(); // onConnect에서 자동으로 중지됨
 
         // 환영 메시지 설정 및 알림 전송
         pCharacteristic->setValue("welcome to ESP32 BLE Server");
@@ -277,21 +303,19 @@ class MyServerCallbacks : public BLEServerCallbacks {
         // 연결 상태 변경되었으므로 네오픽셀 색상 업데이트
         updateNeoPixelColor();
 
+        // [수정] taskNotify.enable() 호출 제거
         printMtuSize(pServer);
     }
 
     void onDisconnect(BLEServer *pServer) {
         deviceConnected = false;
         Serial.println("client disconnected");
-        pServer->getAdvertising()->start(); // 클라이언트 연결 해제 시 광고 재시작
-        
-        // 연결 상태 변경되었으므로 네오픽셀 색상 업데이트
-        updateNeoPixelColor();
+        // 연결 해제 시 loop()에서 광고를 다시 시작하도록 처리
     }
 
-    void onMtuChanged(BLEServer *pServer, uint16_t mtu) {
+    void onMtuChanged(BLEServer *pServer, esp_ble_gatts_cb_param_t *param) {
         Serial.print("MTU size changed to: ");
-        Serial.println(mtu);
+        Serial.println(param->mtu.mtu);
     }
 };
 
@@ -300,6 +324,7 @@ class MyCharateristicCallbacks : public BLECharacteristicCallbacks {
         std::string value = pCharacteristic->getValue();
 
         if (value.length() > 0) {
+            lastActivityTime = millis(); // BLE 쓰기 활동 시 시간 리셋
             Serial.println("Received BLE command:");
             Serial.println(value.c_str());
 
@@ -335,9 +360,7 @@ void setup() {
     pinMode(magazineInsertedPin, INPUT_PULLUP);
 
     // 네오픽셀 초기화
-    pixels.begin();
-    pixels.clear();
-    pixels.show();
+    setupNeoPixel();
 
     Serial.begin(115200);
 
@@ -347,7 +370,7 @@ void setup() {
     Serial.println("Serial connected");
 
     // 설정에서 디바운스 딜레이 읽기
-    u32_t debounceDelay = g_config.get<u32_t>("debounceDelay", 50);
+    uint32_t debounceDelay = g_config.get<uint32_t>("debounceDelay", 50);
     
     // 설정에서 최대 탄약 수 읽기 (없으면 기본값 30)
     maxAmmoCount = g_config.get<int>("maxAmmoCount", 30);
@@ -357,6 +380,8 @@ void setup() {
     TriggerCounter::setup(triggerPin, debounceDelay);
     
     g_ts.startNow();
+    // [수정] taskNotify.enable() 호출 제거
+    lastActivityTime = millis(); // 마지막 활동 시간 초기화
 
     // BLE 장치 생성
     BLEDevice::init(getDeviceName().c_str());
@@ -383,17 +408,84 @@ void setup() {
 
     // 서비스 시작
     pService->start();
-
-    // 광고 시작
-    pServer->getAdvertising()->start();
-
-    Serial.println("BLE Ready....");
-    
-    // 초기 네오픽셀 색상 설정
-    updateNeoPixelColor();
 }
 
-// the loop function runs over and over again forever
+// loop 함수 전체 로직 변경
 void loop() {
+    // [수정] 항상 상태 변화를 감지합니다.
+    handleStateChanges();
+    // 항상 태스크 스케줄러를 실행합니다.
     g_ts.execute();
+
+    if (deviceConnected) {
+        // 연결된 상태이면, 마지막 활동 시간을 계속 갱신하여 절전 모드로 들어가지 않도록 합니다.
+        lastActivityTime = millis();
+    } else {
+        // 연결되지 않은 상태
+        // BLE 광고가 실행 중이 아니면 시작합니다.
+        if (!g_isAdvertising) {
+            Serial.println("Start Advertising...");
+            pServer->getAdvertising()->start();
+            g_isAdvertising = true;
+            task_Cmd.enable();
+            task_NeoPixelBlink.enable();
+            lastActivityTime = millis(); // 광고 시작 시 활동 시간 리셋
+        }
+
+        // 마지막 활동 시간으로부터 설정된 유휴 시간이 지나면 절전 모드로 들어갑니다.
+        if (millis() - lastActivityTime > INACTIVITY_SLEEP_DELAY_MS) {
+            if (g_isAdvertising) {
+                pServer->getAdvertising()->stop();
+                g_isAdvertising = false;
+            }
+            Serial.println("Inactivity timeout. Entering light sleep...");
+            Serial.flush(); // 잠들기 전 시리얼 버퍼 비우기
+            Serial.end();   // 시리얼 포트를 완전히 비활성화합니다.
+
+            task_Cmd.disable();
+            task_NeoPixelBlink.disable();
+            offNeoPixel();
+
+            pinMode(neoPixelPin, OUTPUT);
+            digitalWrite(neoPixelPin, LOW);
+            gpio_hold_en((gpio_num_t)neoPixelPin);
+
+            // actuator 핀을 LOW로 설정하여 액츄에이터 비활성화
+            pinMode(actionPin1, OUTPUT);
+            digitalWrite(actionPin1, LOW);
+            gpio_hold_en((gpio_num_t)actionPin1);
+
+
+            // 일어나기 위한 GPIO 설정
+            gpio_wakeup_enable((gpio_num_t)triggerPin, GPIO_INTR_LOW_LEVEL);
+            gpio_wakeup_enable((gpio_num_t)magazineInsertedPin, GPIO_INTR_LOW_LEVEL);
+            esp_sleep_enable_gpio_wakeup();
+
+            // Light-sleep 진입
+            esp_light_sleep_start();
+
+            // GPIO 핀을 다시 활성화합니다.
+            gpio_hold_dis((gpio_num_t)neoPixelPin);
+            gpio_hold_dis((gpio_num_t)actionPin1);
+
+            // --- 깨어난 후 처리 ---
+            // 시리얼 포트를 다시 초기화하고 안정될 때까지 기다립니다.
+            Serial.begin(115200);
+            long entry = millis();
+            while(!Serial && millis() - entry < 1000) { 
+              ; // 1초 동안 기다리거나 시리얼이 연결되면 탈출
+            }
+            delay(100); // 추가적인 안정화 시간
+
+            // 네오픽셀을 다시 초기화합니다.
+            setupNeoPixel();
+
+            //actuator 핀을 다시 설정합니다.
+            pinMode(actionPin1, OUTPUT);
+            digitalWrite(actionPin1, LOW);
+
+            Serial.println("\n\nWoke up from light sleep.");
+            lastActivityTime = millis(); // 깨어난 후 활동 시간 리셋
+        }
+    }
 }
