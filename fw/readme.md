@@ -308,6 +308,7 @@ ammo setmax [수량]
 **예시:**
 ```
 ammo setmax 50
+ammo setmax 8
 ```
 
 **응답 예시:**

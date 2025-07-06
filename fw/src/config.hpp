@@ -1,214 +1,161 @@
+// config.hpp
 #ifndef CONFIG_HPP
 #define CONFIG_HPP
 
-#include <ArduinoJson.h>
-#include <EEPROM.h>
+#include <Preferences.h>
 
-#ifdef ESP32
-#include <nvs_flash.h>
-#endif
+class Config {
+private:
+    Preferences preferences;
+    static constexpr const char* NAMESPACE = "config";
 
-class Config
-{
 public:
-    int version = 1;
-
-#ifdef ESP8266
-    static const size_t EEPROM_SIZE = 1024;
-    static const int EEPROM_START_ADDRESS = 0;
-#elif ESP32
-    static const size_t EEPROM_SIZE = 1024;
-    static const int EEPROM_START_ADDRESS = 0;
-#else
-    static const size_t EEPROM_SIZE = 512;
-    static const int EEPROM_START_ADDRESS = 0;
-#endif
-    String jsonDoc;
-
-    Config()
-    {
-
-#ifdef ESP32
-        // NVS 초기화
-        esp_err_t err = nvs_flash_init();
-        if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND)
-        {
-            ESP_ERROR_CHECK(nvs_flash_erase());
-            err = nvs_flash_init();
-        }
-        ESP_ERROR_CHECK(err);
-#endif
-
-#ifdef AVR
-#else
-        EEPROM.begin(EEPROM_SIZE);
-#endif
-
-        load();
+    void begin() {
+        preferences.begin(NAMESPACE, false);
     }
 
-    void load()
-    {
-        char buffer[EEPROM_SIZE];
-        for (size_t i = 0; i < EEPROM_SIZE; ++i)
-        {
-            buffer[i] = EEPROM.read(i);
-#ifdef DEBUG
-            Serial.print(buffer[i]); // debug
-#endif
-        }
+    void load() {
+        // 기본값들을 설정 (없으면 자동으로 기본값 사용)
+        // 실제로는 get() 호출 시 기본값이 적용되므로 여기서는 특별한 작업 불필요
+    }
 
-#ifdef DEBUG
-        Serial.println("data length: " + String(strlen(buffer))); // debug
-        Serial.println("data: " + String(buffer));                // debug
-#endif
-        // if empty, set default
-        if (buffer[0] != '{' && buffer[0] != '[')
-        {
-            jsonDoc = "{}";
-        }
-        else
-        {
-            jsonDoc = String(buffer);
-        }
+    void save() {
+        // NVS는 set() 호출 시 자동으로 저장되므로 별도 save() 불필요
+        // 하지만 호환성을 위해 남겨둠
+    }
 
-        if(!hasKey("password"))
-        {
+    // 타입별 set 함수들
+    void set(const char* key, const String& value) {
+        preferences.putString(key, value);
+    }
+    
+    void set(const char* key, const char* value) {
+        preferences.putString(key, String(value));
+    }
+    
+    void set(const char* key, int value) {
+        preferences.putInt(key, value);
+    }
+    
+    void set(const char* key, uint32_t value) {
+        preferences.putUInt(key, value);
+    }
+    
+    void set(const char* key, bool value) {
+        preferences.putBool(key, value);
+    }
+    
+    void set(const char* key, float value) {
+        preferences.putFloat(key, value);
+    }
+    
+    void set(const char* key, double value) {
+        preferences.putDouble(key, value);
+    }
+
+    // 타입별 get 함수들
+    String getString(const char* key, const String& defaultValue = "") {
+        return preferences.getString(key, defaultValue);
+    }
+    
+    int getInt(const char* key, int defaultValue = 0) {
+        return preferences.getInt(key, defaultValue);
+    }
+    
+    uint32_t getUInt(const char* key, uint32_t defaultValue = 0) {
+        return preferences.getUInt(key, defaultValue);
+    }
+    
+    bool getBool(const char* key, bool defaultValue = false) {
+        return preferences.getBool(key, defaultValue);
+    }
+    
+    float getFloat(const char* key, float defaultValue = 0.0f) {
+        return preferences.getFloat(key, defaultValue);
+    }
+    
+    double getDouble(const char* key, double defaultValue = 0.0) {
+        return preferences.getDouble(key, defaultValue);
+    }
+
+    // 템플릿 함수 (하위 호환성을 위해 유지)
+    template <typename T>
+    T get(const char* key, T defaultValue = T()) {
+        // 컴파일러가 타입을 추론할 수 있도록 명시적 특수화 사용
+        return getTypedValue<T>(key, defaultValue);
+    }
+
+private:
+    // 내부 템플릿 함수들
+    template <typename T>
+    T getTypedValue(const char* key, T defaultValue);
+    
+public:
+
+    bool hasKey(const char* key) {
+        return preferences.isKey(key);
+    }
+
+    String dump() {
+        // 간단한 key=value 형태로 덤프 (const 제거)
+        String result = "Config dump:\n";
+        result += "password=" + preferences.getString("password", "1111") + "\n";
+        result += "debounceDelay=" + String(preferences.getUInt("debounceDelay", 50)) + "\n";
+        result += "maxAmmoCount=" + String(preferences.getInt("maxAmmoCount", 30)) + "\n";
+        result += "currentAmmo=" + String(preferences.getInt("currentAmmo", 30)) + "\n";
+        return result;
+    }
+
+    void clear() {
+        preferences.clear();
+    }
+
+    // 설정 초기화 (기본값 설정)
+    void initDefaults() {
+        if (!hasKey("password")) {
             set("password", "1111");
         }
-
-        if(!hasKey("debounceDelay"))
-        {
-            set("debounceDelay", 50);
+        if (!hasKey("debounceDelay")) {
+            set("debounceDelay", uint32_t(50));
         }
-
-    }
-
-    void save()
-    {
-        for (size_t i = 0; i < EEPROM_SIZE; ++i)
-        {
-            if (i < jsonDoc.length())
-            {
-                EEPROM.write(i, jsonDoc[i]);
-            }
-            else
-            {
-                EEPROM.write(i, 0);
-            }
+        if (!hasKey("maxAmmoCount")) {
+            set("maxAmmoCount", 30);
         }
-
-#ifdef DEBUG
-        Serial.println("data length: " + String(jsonDoc.length())); // debug
-        Serial.println("data: " + jsonDoc);                         // debug
-#endif
-
-#ifdef AVR
-
-#else
-
-        EEPROM.commit();
-#endif
-    }
-
-    // Generic set and get
-    template <typename T>
-    void set(const char *key, T value)
-    {
-        JsonDocument doc;
-        DeserializationError error = deserializeJson(doc, jsonDoc);
-        if (error)
-        {
-            Serial.print(F("deserializeJson() failed: "));
-            Serial.println(error.f_str());
-            return;
+        if (!hasKey("currentAmmo")) {
+            set("currentAmmo", 30);
         }
-
-        doc[key] = value;
-        serializeJson(doc, jsonDoc);
-        save();
     }
+};
 
-    template <typename T>
-    T get(const char *key, T defaultValue = T()) const
-    {
-        JsonDocument doc;
-        DeserializationError error = deserializeJson(doc, jsonDoc);
-        if (error)
-        {
-            Serial.print(F("deserializeJson() failed: "));
-            Serial.println(error.f_str());
-            return defaultValue;
-        }
+// 템플릿 특수화 정의
+template <>
+inline String Config::getTypedValue<String>(const char* key, String defaultValue) {
+    return getString(key, defaultValue);
+}
 
-        // if (!doc.containsKey(key))
-        // {
-        //     return defaultValue;
-        // }
-        // 수정:
-        if (doc[key].isNull())
-        {
-            return defaultValue;
-        }
- 
-        return doc[key].as<T>();
-    }
+template <>
+inline int Config::getTypedValue<int>(const char* key, int defaultValue) {
+    return getInt(key, defaultValue);
+}
 
-    // check key exist
-    bool hasKey(const char *key) const
-    {
-        JsonDocument doc;
-        DeserializationError error = deserializeJson(doc, jsonDoc);
-        if (error)
-        {
-            Serial.print(F("deserializeJson() failed: "));
-            Serial.println(error.f_str());
-            return false;
-        }
+template <>
+inline uint32_t Config::getTypedValue<uint32_t>(const char* key, uint32_t defaultValue) {
+    return getUInt(key, defaultValue);
+}
 
-        // return doc.containsKey(key);
-        return doc[key].isNull() == false;
-    }
+template <>
+inline bool Config::getTypedValue<bool>(const char* key, bool defaultValue) {
+    return getBool(key, defaultValue);
+}
 
-    void getArray(const char *key, JsonDocument &_doc) const
-    {
-        JsonDocument doc;
-        DeserializationError error = deserializeJson(doc, jsonDoc);
+template <>
+inline float Config::getTypedValue<float>(const char* key, float defaultValue) {
+    return getFloat(key, defaultValue);
+}
 
-        Serial.println(doc[key].as<String>());
-
-        if (error)
-        {
-            Serial.print(F("deserializeJson() failed: "));
-            Serial.println(error.f_str());
-            // return JsonArray();
-        }
-
-        JsonDocument tempDoc;
-
-        error = deserializeJson(_doc, doc[key].as<String>());
-        if (error)
-        {
-            Serial.print(F("deserializeJson() failed: "));
-            Serial.println(error.f_str());
-            // return JsonArray();
-        }
-
-        Serial.println(_doc.as<JsonArray>().size());
-        // array = tempDoc.as<JsonArray>();
-        // return tempDoc.as<JsonArray>();
-    }
-
-    String dump() const
-    {
-        return jsonDoc;
-    }
-
-    void clear()
-    {
-        jsonDoc = "{}";
-        save();
-    }
+template <>
+inline double Config::getTypedValue<double>(const char* key, double defaultValue) {
+    return getDouble(key, defaultValue);
 };
 
 #endif // CONFIG_HPP
