@@ -222,6 +222,8 @@ class MyServerCallbacks : public BLEServerCallbacks {
         Serial.println("client connected");
         
         pCharacteristic->setValue("welcome to ESP32 BLE Server");
+        pCharacteristic->notify();
+        
         updateNeoPixelColor();
         
         if (pServer) {
