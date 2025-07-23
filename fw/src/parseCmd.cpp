@@ -16,12 +16,12 @@ tonkey g_MainParser;
 extern Config g_config;
 
 // 시스템 정보 함수들
-extern bool getConnectionStatus();
-extern String getServiceUUID();
-extern String getCharacteristicUUID();
-extern String getAddress();
-extern String getMtuSize();
-extern String getDeviceName();
+// extern bool getConnectionStatus();
+// extern String getServiceUUID();
+// extern String getCharacteristicUUID();
+// extern String getAddress();
+// extern String getMtuSize();
+// extern String getDeviceName();
 
 // 트리거 관련 함수들
 extern void clearTriggerCount();
@@ -74,16 +74,16 @@ String makeStatusResponse() {
     return response;
 }
 
-String makeBleInfoResponse() {
-    String response = "result: ok\n";
-    response += "name: " + getDeviceName() + "\n";
-    response += "address: " + getAddress() + "\n";
-    response += "serviceUUID: " + getServiceUUID() + "\n";
-    response += "characteristicUUID: " + getCharacteristicUUID() + "\n";
-    response += "mtuSize: " + getMtuSize() + "\n";
-    response += "connection: " + String(getConnectionStatus() ? "true" : "false") + "\n";
-    return response;
-}
+// String makeBleInfoResponse() {
+//     String response = "result: ok\n";
+//     response += "name: " + getDeviceName() + "\n";
+//     response += "address: " + getAddress() + "\n";
+//     response += "serviceUUID: " + getServiceUUID() + "\n";
+//     response += "characteristicUUID: " + getCharacteristicUUID() + "\n";
+//     response += "mtuSize: " + getMtuSize() + "\n";
+//     response += "connection: " + String(getConnectionStatus() ? "true" : "false") + "\n";
+//     return response;
+// }
 
 String makeAboutResponse() {
     String response = "result: ok\n";
@@ -123,9 +123,9 @@ String ParseCmd(String _strLine) {
         
         return makeResponse("ok", "config saved");
     }
-    else if (cmd == "bleinfo") {
-        return makeBleInfoResponse();
-    }
+    // else if (cmd == "bleinfo") {
+    //     return makeBleInfoResponse();
+    // }
     else if (cmd == "heap") {
         String response = "result: ok\n";
         response += "heapSize: " + String(ESP.getHeapSize()) + "\n";
@@ -291,13 +291,13 @@ String ParseCmd(String _strLine) {
     }
 
     // === BLE 정보 ===
-    else if (cmd == "ble") {
-        if (g_MainParser.getTokenCount() > 1 && g_MainParser.getToken(1) == "info") {
-            return makeBleInfoResponse();
-        } else {
-            return makeResponse("fail", "need 'info' sub command");
-        }
-    }
+    // else if (cmd == "ble") {
+    //     if (g_MainParser.getTokenCount() > 1 && g_MainParser.getToken(1) == "info") {
+    //         return makeBleInfoResponse();
+    //     } else {
+    //         return makeResponse("fail", "need 'info' sub command");
+    //     }
+    // }
 
     // === 알 수 없는 명령 ===
     else {

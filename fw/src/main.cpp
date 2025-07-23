@@ -1,9 +1,9 @@
 #include <Arduino.h>
 #include <Adafruit_NeoPixel.h>
-#include <BLEDevice.h>
-#include <BLEServer.h>
-#include <BLEUtils.h>
-#include <BLE2902.h>
+// #include <BLEDevice.h>
+// #include <BLEServer.h>
+// #include <BLEUtils.h>
+// #include <BLE2902.h>
 #include <vector>
 #include <TaskScheduler.h>
 #include <esp_sleep.h>
@@ -36,6 +36,7 @@ bool g_isAdvertising = false;
     constexpr int MAGAZINE_PIN = 3;
     constexpr int NEOPIXEL_PIN = 8;
     constexpr int LED_BUILTIN_PIN = 8;
+    constexpr int AMMO_RESET_PIN = 0; // 추가된 핀 정의
 #else
     constexpr int ACTION_PIN = 4;
     constexpr int TRIGGER_PIN = 1;
@@ -52,8 +53,8 @@ Adafruit_NeoPixel pixels(NUM_PIXELS, NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800);
 constexpr const char* SERVICE_UUID = "2ca354b0-5f62-11ef-b4d4-f7af9038ee7d";
 constexpr const char* CHARACTERISTIC_UUID = "35c34c80-5f62-11ef-b4d4-f7af9038ee7d";
 
-BLEServer *pServer = NULL;
-BLECharacteristic *pCharacteristic = NULL;
+// BLEServer *pServer = NULL;
+// BLECharacteristic *pCharacteristic = NULL;
 bool deviceConnected = false;
 
 // 게임 상태 변수
@@ -71,22 +72,22 @@ void handleStateChanges();
 void updateActivityTime();
 
 // RTC 메모리에 저장할 데이터 (Deep Sleep 간 유지)
-RTC_DATA_ATTR int rtc_bootCount = 0;
-RTC_DATA_ATTR bool rtc_wasConnected = false;
+// RTC_DATA_ATTR int rtc_bootCount = 0;
+// RTC_DATA_ATTR bool rtc_wasConnected = false;
 
 // Getter 함수들
 bool getConnectionStatus() { return deviceConnected; }
 String getServiceUUID() { return String(SERVICE_UUID); }
 String getCharacteristicUUID() { return String(CHARACTERISTIC_UUID); }
-String getAddress() { return BLEDevice::getAddress().toString().c_str(); }
+// String getAddress() { return BLEDevice::getAddress().toString().c_str(); }
 String getDeviceName() { return "BSQTC_" + getChipID(); }
 
-String getMtuSize() {
-    if (pServer) {
-        return String(pServer->getPeerMTU(pServer->getConnId()));
-    }
-    return "0";
-}
+// String getMtuSize() {
+//     if (pServer) {
+//         return String(pServer->getPeerMTU(pServer->getConnId()));
+//     }
+//     return "0";
+// }
 
 // 웨이크업 원인 확인
 void printWakeupReason() {
@@ -160,7 +161,7 @@ void decreaseAmmoCount() {
     if (gameState.currentAmmoCount <= 0) {
         gameState.currentAmmoCount = 0;
         gameState.firingEnabled = false;
-        doActuatorPulse();
+        doActuatorPulse(2000); // 2초 동안 액츄에이터 작동
     }
 }
 
@@ -212,72 +213,72 @@ Task task_Cmd(300, TASK_FOREVER, []() {
     }
 }, &g_ts, false);
 
-// BLE 콜백 클래스들
-class MyServerCallbacks : public BLEServerCallbacks {
-    void onConnect(BLEServer *pServer) {
-        updateActivityTime();
-        deviceConnected = true;
-        g_isAdvertising = false;
-        rtc_wasConnected = true; // RTC 메모리에 연결 상태 저장
-        Serial.println("client connected");
+// // BLE 콜백 클래스들
+// class MyServerCallbacks : public BLEServerCallbacks {
+//     void onConnect(BLEServer *pServer) {
+//         updateActivityTime();
+//         deviceConnected = true;
+//         g_isAdvertising = false;
+//         rtc_wasConnected = true; // RTC 메모리에 연결 상태 저장
+//         Serial.println("client connected");
         
-        pCharacteristic->setValue("welcome to ESP32 BLE Server");
-        pCharacteristic->notify();
+//         pCharacteristic->setValue("welcome to ESP32 BLE Server");
+//         pCharacteristic->notify();
         
-        updateNeoPixelColor();
+//         updateNeoPixelColor();
         
-        if (pServer) {
-            Serial.print("current MTU size: ");
-            Serial.println(pServer->getPeerMTU(pServer->getConnId()));
-        }
-    }
+//         if (pServer) {
+//             Serial.print("current MTU size: ");
+//             Serial.println(pServer->getPeerMTU(pServer->getConnId()));
+//         }
+//     }
 
-    void onDisconnect(BLEServer *pServer) {
-        deviceConnected = false;
-        rtc_wasConnected = false;
-        Serial.println("client disconnected");
-    }
+//     void onDisconnect(BLEServer *pServer) {
+//         deviceConnected = false;
+//         rtc_wasConnected = false;
+//         Serial.println("client disconnected");
+//     }
 
-    void onMtuChanged(BLEServer *pServer, esp_ble_gatts_cb_param_t *param) {
-        Serial.print("MTU size changed to: ");
-        Serial.println(param->mtu.mtu);
-    }
-};
+//     void onMtuChanged(BLEServer *pServer, esp_ble_gatts_cb_param_t *param) {
+//         Serial.print("MTU size changed to: ");
+//         Serial.println(param->mtu.mtu);
+//     }
+// };
 
-class MyCharateristicCallbacks : public BLECharacteristicCallbacks {
-    void onWrite(BLECharacteristic *pCharacteristic) {
-        std::string value = pCharacteristic->getValue();
+// class MyCharateristicCallbacks : public BLECharacteristicCallbacks {
+//     void onWrite(BLECharacteristic *pCharacteristic) {
+//         std::string value = pCharacteristic->getValue();
 
-        if (value.length() > 0) {
-            updateActivityTime();
-            Serial.println("Received BLE command:");
-            Serial.println(value.c_str());
+//         if (value.length() > 0) {
+//             updateActivityTime();
+//             Serial.println("Received BLE command:");
+//             Serial.println(value.c_str());
 
-            String response = ParseCmd(String(value.c_str()));
-            Serial.println("Response:");
-            Serial.println(response);
+//             String response = ParseCmd(String(value.c_str()));
+//             Serial.println("Response:");
+//             Serial.println(response);
 
-            if (pServer) {
-                Serial.print("current MTU size: ");
-                Serial.println(pServer->getPeerMTU(pServer->getConnId()));
-            }
+//             if (pServer) {
+//                 Serial.print("current MTU size: ");
+//                 Serial.println(pServer->getPeerMTU(pServer->getConnId()));
+//             }
 
-            pCharacteristic->setValue(response.c_str());
-            pCharacteristic->notify();
-        } 
-    }
+//             pCharacteristic->setValue(response.c_str());
+//             pCharacteristic->notify();
+//         } 
+//     }
 
-    void onRead(BLECharacteristic *pCharacteristic) {
-        Serial.println("BLE read : ");
-        std::string value = pCharacteristic->getValue();
-        Serial.println(value.c_str());
+//     void onRead(BLECharacteristic *pCharacteristic) {
+//         Serial.println("BLE read : ");
+//         std::string value = pCharacteristic->getValue();
+//         Serial.println(value.c_str());
         
-        if (pServer) {
-            Serial.print("current MTU size: ");
-            Serial.println(pServer->getPeerMTU(pServer->getConnId()));
-        }
-    }
-};
+//         if (pServer) {
+//             Serial.print("current MTU size: ");
+//             Serial.println(pServer->getPeerMTU(pServer->getConnId()));
+//         }
+//     }
+// };
 
 // 유틸리티 함수들
 void updateActivityTime() {
@@ -311,8 +312,19 @@ void handleStateChanges() {
     int currentTriggerCount = TriggerCounter::getTriggerCount();
     bool magazineInserted = isMagazineInserted();
 
+    if(!digitalRead(AMMO_RESET_PIN)) {
+        // 탄창 리셋 핀 눌림 감지        
+        gameState.currentAmmoCount = gameState.maxAmmoCount;        
+    }
+
     if (magazineInserted) {
         updateActivityTime();
+
+        //탄수가 0 이고 탄창이 삽입이 일어났다면 액츄에이터 작동
+        if (gameState.currentAmmoCount <= 0 && !oldMagazineInserted) {            
+            doActuatorPulse(2000); // 2초 동안 액츄에이터 작동
+            updateNeoPixelColor();
+        }
     }
 
     if (currentTriggerCount != oldTriggerCount || oldMagazineInserted != magazineInserted) {
@@ -333,6 +345,7 @@ void handleStateChanges() {
         Serial.println(data.c_str());
         updateNeoPixelColor();
     }
+    
 }
 
 void enterDeepSleep() {
@@ -342,17 +355,17 @@ void enterDeepSleep() {
     saveCurrentState();
     delay(200);
 
-    // BLE 완전 정리
-    if (g_isAdvertising) {
-        pServer->getAdvertising()->stop();
-        g_isAdvertising = false;
-    }
+    // // BLE 완전 정리
+    // if (g_isAdvertising) {
+    //     pServer->getAdvertising()->stop();
+    //     g_isAdvertising = false;
+    // }
     
-    if (deviceConnected) {
-        pServer->disconnect(pServer->getConnId());
-    }
+    // if (deviceConnected) {
+    //     pServer->disconnect(pServer->getConnId());
+    // }
     
-    BLEDevice::deinit(true); // BLE 완전 종료
+    // BLEDevice::deinit(true); // BLE 완전 종료
     
     Serial.flush();
     delay(200);
@@ -406,12 +419,14 @@ void setup() {
     digitalWrite(ACTION_PIN, LOW);
     pinMode(MAGAZINE_PIN, INPUT_PULLUP);
 
+    pinMode(AMMO_RESET_PIN, INPUT_PULLUP); // 탄창 리셋 핀 초기화
+
     Serial.begin(115200);
     delay(1000); // 시리얼 안정화
     
     // 부팅 카운트 증가
-    ++rtc_bootCount;
-    Serial.println("Boot number: " + String(rtc_bootCount));
+    // ++rtc_bootCount;
+    // Serial.println("Boot number: " + String(rtc_bootCount));
     
     // 웨이크업 원인 출력
     printWakeupReason();
@@ -441,31 +456,31 @@ void setup() {
     g_ts.startNow();
     updateActivityTime();
 
-    // BLE 초기화
-    BLEDevice::init(getDeviceName().c_str());
+    // // BLE 초기화
+    // BLEDevice::init(getDeviceName().c_str());
     
-    pServer = BLEDevice::createServer();
-    pServer->setCallbacks(new MyServerCallbacks());
+    // pServer = BLEDevice::createServer();
+    // pServer->setCallbacks(new MyServerCallbacks());
 
-    BLEService *pService = pServer->createService(SERVICE_UUID);
+    // BLEService *pService = pServer->createService(SERVICE_UUID);
 
-    pCharacteristic = pService->createCharacteristic(
-        CHARACTERISTIC_UUID,
-        BLECharacteristic::PROPERTY_READ |
-        BLECharacteristic::PROPERTY_WRITE |
-        BLECharacteristic::PROPERTY_NOTIFY |
-        BLECharacteristic::PROPERTY_INDICATE
-    );
+    // pCharacteristic = pService->createCharacteristic(
+    //     CHARACTERISTIC_UUID,
+    //     BLECharacteristic::PROPERTY_READ |
+    //     BLECharacteristic::PROPERTY_WRITE |
+    //     BLECharacteristic::PROPERTY_NOTIFY |
+    //     BLECharacteristic::PROPERTY_INDICATE
+    // );
 
-    pCharacteristic->addDescriptor(new BLE2902());
-    pCharacteristic->setCallbacks(new MyCharateristicCallbacks());
+    // pCharacteristic->addDescriptor(new BLE2902());
+    // pCharacteristic->setCallbacks(new MyCharateristicCallbacks());
 
-    pService->start();
+    // pService->start();
     
     // 이전에 연결되어 있었다면 더 빨리 절전 모드로 전환
-    if (rtc_wasConnected && !isMagazineInserted()) {
-        lastActivityTime = millis() - (INACTIVITY_SLEEP_DELAY_MS - 30000); // 30초 후 슬립
-    }
+    // if (!isMagazineInserted()) {
+    //     lastActivityTime = millis() - (INACTIVITY_SLEEP_DELAY_MS - 30000); // 30초 후 슬립
+    // }
 }
 
 void loop() {
@@ -477,7 +492,7 @@ void loop() {
     } else {
         if (!g_isAdvertising) {
             Serial.println("Start Advertising...");
-            pServer->getAdvertising()->start();
+            // pServer->getAdvertising()->start();
             g_isAdvertising = true;
             task_Cmd.enable();
             updateActivityTime();
