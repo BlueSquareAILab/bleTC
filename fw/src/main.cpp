@@ -16,7 +16,7 @@ Scheduler g_ts;
 Config g_config;
 
 // 시스템 상수
-constexpr unsigned long INACTIVITY_SLEEP_DELAY_MS = 3 * 60 * 1000UL; // 3분
+constexpr unsigned long INACTIVITY_SLEEP_DELAY_MS = 30 * 1000UL; // 30초
 
 // 전역 상태 변수
 unsigned long lastActivityTime = 0;
@@ -442,6 +442,14 @@ void loop() {
 
         if (millis() - lastActivityTime > INACTIVITY_SLEEP_DELAY_MS) {
             enterDeepSleep(); // Deep Sleep 진입 (재시작됨)
+        }
+        else {
+            // 1초마다 상태 출력
+            // if (millis() % 1000 < 50) {
+            //     Serial.print("time elapsed: ");
+            //     Serial.println(millis() - lastActivityTime);
+                
+            // }   
         }
     }
 }
