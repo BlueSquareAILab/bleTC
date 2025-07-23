@@ -49,13 +49,10 @@ bool g_isAdvertising = false;
 constexpr int NUM_PIXELS = 1;
 Adafruit_NeoPixel pixels(NUM_PIXELS, NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800);
 
-// BLE 설정
-constexpr const char* SERVICE_UUID = "2ca354b0-5f62-11ef-b4d4-f7af9038ee7d";
-constexpr const char* CHARACTERISTIC_UUID = "35c34c80-5f62-11ef-b4d4-f7af9038ee7d";
-
-// BLEServer *pServer = NULL;
-// BLECharacteristic *pCharacteristic = NULL;
-bool deviceConnected = false;
+// --- [추가] 네오픽셀 깜박임 설정 ---
+constexpr unsigned long NEOPIXEL_ON_DURATION_MS = 50;  // 0.05초 ON
+constexpr unsigned long NEOPIXEL_OFF_DURATION_MS = 1000; // 1초 OFF
+bool g_isNeoPixelOn = false; // 네오픽셀 현재 ON/OFF 상태
 
 // 게임 상태 변수
 struct GameState {
@@ -72,24 +69,21 @@ GameState gameState;
 extern String ParseCmd(String _strLine);
 void handleStateChanges();
 void updateActivityTime();
+void updateNeoPixelColor(); // 함수 선언 위치 변경 또는 추가
+
+// --- [추가] 네오픽셀 깜박임 콜백 함수 선언 ---
+void blinkNeoPixelCallback(); 
+
+// --- [추가] 네오픽셀 깜박임 제어 Task ---
+Task task_BlinkNeoPixel(TASK_IMMEDIATE, TASK_FOREVER, &blinkNeoPixelCallback, &g_ts, false); // 처음에는 비활성화 상태로 시작
+
 
 // RTC 메모리에 저장할 데이터 (Deep Sleep 간 유지)
 // RTC_DATA_ATTR int rtc_bootCount = 0;
 // RTC_DATA_ATTR bool rtc_wasConnected = false;
 
 // Getter 함수들
-bool getConnectionStatus() { return deviceConnected; }
-String getServiceUUID() { return String(SERVICE_UUID); }
-String getCharacteristicUUID() { return String(CHARACTERISTIC_UUID); }
-// String getAddress() { return BLEDevice::getAddress().toString().c_str(); }
 String getDeviceName() { return "BSQTC_" + getChipID(); }
-
-// String getMtuSize() {
-//     if (pServer) {
-//         return String(pServer->getPeerMTU(pServer->getConnId()));
-//     }
-//     return "0";
-// }
 
 // 웨이크업 원인 확인
 void printWakeupReason() {
@@ -168,36 +162,55 @@ void decreaseAmmoCount() {
 }
 
 // 네오픽셀 제어
+void offNeoPixel() {
+    pixels.clear();
+    pixels.show();
+    g_isNeoPixelOn = false; // [수정] 상태 변수 업데이트
+}
+
+// --- [수정] 네오픽셀 색상 업데이트 및 깜박임 리셋 함수 ---
 void updateNeoPixelColor() {
     int ammoLevel = getAmmoLevel();
     uint32_t color;
 
     if (ammoLevel <= 0) {
-        color = pixels.Color(255, 0, 0);      // 빨간색
+        color = pixels.Color(255, 0, 0);       // 빨간색
     } else if (ammoLevel <= 20) {
-        color = pixels.Color(255, 165, 0);    // 주황색
+        color = pixels.Color(255, 165, 0);     // 주황색
     } else if (ammoLevel <= 50) {
-        color = pixels.Color(255, 255, 0);    // 노란색
+        color = pixels.Color(255, 255, 0);     // 노란색
     } else if (ammoLevel <= 80) {
-        color = pixels.Color(173, 255, 47);   // 연두색
+        color = pixels.Color(173, 255, 47);    // 연두색
     } else {
-        color = pixels.Color(0, 255, 0);      // 초록색
+        color = pixels.Color(0, 255, 0);       // 초록색
     }
 
     pixels.setPixelColor(0, color);
     pixels.show();
+
+    // LED를 즉시 켜고, ON 상태 지속 시간 후 꺼지도록 태스크를 재시작
+    g_isNeoPixelOn = true;
+    task_BlinkNeoPixel.restartDelayed(NEOPIXEL_ON_DURATION_MS);
+}
+
+// --- [추가] 네오픽셀 깜박임을 위한 콜백 함수 ---
+void blinkNeoPixelCallback() {
+    if (g_isNeoPixelOn) {
+        // 현재 ON 상태 -> OFF로 변경하고, OFF 지속 시간 후에 다시 태스크 실행
+        offNeoPixel();
+        task_BlinkNeoPixel.delay(NEOPIXEL_OFF_DURATION_MS);
+    } else {
+        // 현재 OFF 상태 -> ON으로 변경 (이때 색상을 다시 계산)
+        updateNeoPixelColor(); // 이 함수가 다시 task_BlinkNeoPixel.restartDelayed를 호출하여 사이클이 이어짐
+    }
 }
 
 void setupNeoPixel() {
     pixels.begin();
     pixels.clear();
     pixels.show();
-    updateNeoPixelColor();
-}
-
-void offNeoPixel() {
-    pixels.clear();
-    pixels.show();
+    // updateNeoPixelColor(); // [수정] 직접 호출 대신 태스크 활성화
+    task_BlinkNeoPixel.enable(); // [수정] 부팅 시 깜박임 시작
 }
 
 // 시리얼 명령 처리
@@ -250,38 +263,28 @@ void handleStateChanges() {
 
     if (!digitalRead(AMMO_RESET_PIN) && gameState.currentAmmoCount < gameState.maxAmmoCount) {
         gameState.currentAmmoCount = gameState.maxAmmoCount;
-        resumeFiring();                                   // gameState.firingEnabled = true
-        TriggerCounter::clearTriggerCount();              // 내부 카운터 초기화
-        oldTriggerCount = TriggerCounter::getTriggerCount();  // 로컬 oldTriggerCount 동기화
-        updateNeoPixelColor();
+        resumeFiring();
+        TriggerCounter::clearTriggerCount();
+        oldTriggerCount = TriggerCounter::getTriggerCount();
+        updateNeoPixelColor(); // [기존 로직 유지] 색상 즉시 업데이트 및 깜박임 재시작
         Serial.println("Ammo reset triggered. Current ammo count reset to max.");
 
-        // 현재 상태 저장
         saveCurrentState();
     }
-
-
-    // Serial.println(digitalRead(AMMO_RESET_PIN));
 
     if (magazineInserted) {
         updateActivityTime();
 
-        //탄수가 0 이고 탄창이 삽입이 일어났다면 액츄에이터 작동
-        if (gameState.currentAmmoCount <= 0 && !oldMagazineInserted) {            
-            // doActuatorPulse(2000); // 2초 동안 액츄에이터 작동
-            doActuatorPulse(pulseDuration); // 액츄에이터 작동
-            updateNeoPixelColor();
+        if (gameState.currentAmmoCount <= 0 && !oldMagazineInserted) {         
+            doActuatorPulse(pulseDuration);
+            updateNeoPixelColor(); // [기존 로직 유지] 색상 즉시 업데이트 및 깜박임 재시작
         }
     }
     else {
         if(oldMagazineInserted) {
-            // 탄창이 제거되었지만 이전에 삽입되어 있었던 경우
-            saveCurrentState(); // 현재 상태 저장
+            saveCurrentState();
         }
-        
     }
-
-
 
     if (currentTriggerCount != oldTriggerCount || oldMagazineInserted != magazineInserted) {
         updateActivityTime();
@@ -299,59 +302,39 @@ void handleStateChanges() {
             "," + String(ammoLevel) + ",0";
         
         Serial.println(data.c_str());
-        updateNeoPixelColor();
+        updateNeoPixelColor(); // [기존 로직 유지] 색상 즉시 업데이트 및 깜박임 재시작
     }
-    
 }
 
 void enterDeepSleep() {
     Serial.println("Inactivity timeout. Entering deep sleep...");
     
-    // 현재 상태 저장
+    // [추가] Deep Sleep 진입 전 태스크 비활성화 및 LED 끄기
+    task_BlinkNeoPixel.disable();
+    offNeoPixel();
+
     saveCurrentState();
     delay(200);
 
-    // // BLE 완전 정리
-    // if (g_isAdvertising) {
-    //     pServer->getAdvertising()->stop();
-    //     g_isAdvertising = false;
-    // }
-    
-    // if (deviceConnected) {
-    //     pServer->disconnect(pServer->getConnId());
-    // }
-    
-    // BLEDevice::deinit(true); // BLE 완전 종료
-    
     Serial.flush();
     delay(200);
-
-    // 네오픽셀 완전 비활성화
-    offNeoPixel();
     
-    // GPIO 핀들을 절전 상태로 고정
-    // 네오픽셀 핀을 LOW로 고정 (전력 소모 방지)
     pinMode(NEOPIXEL_PIN, OUTPUT);
     digitalWrite(NEOPIXEL_PIN, LOW);
     gpio_hold_en((gpio_num_t)NEOPIXEL_PIN);
     
-    // 액츄에이터 핀을 LOW로 고정 (실수로 동작 방지)
     pinMode(ACTION_PIN, OUTPUT);
     digitalWrite(ACTION_PIN, LOW);
     gpio_hold_en((gpio_num_t)ACTION_PIN);
 
-    
-    // 비트마스크 생성: (1ULL << 핀번호)
     uint64_t wakeup_pin_mask = 1ULL << MAGAZINE_PIN;
     
-    // GPIO 웨이크업 활성화: 핀이 LOW가 되면 깨어남
     esp_err_t result = esp_deep_sleep_enable_gpio_wakeup(wakeup_pin_mask, ESP_GPIO_WAKEUP_GPIO_LOW);
     
     if (result == ESP_OK) {
         Serial.printf("GPIO wakeup enabled on pin %d (LOW trigger)\n", MAGAZINE_PIN);
     } else {
         Serial.printf("Failed to enable GPIO wakeup: %d\n", result);
-        // 실패 시 타이머 웨이크업으로 대체
         esp_sleep_enable_timer_wakeup(60 * 1000000ULL); // 1분 후 체크
         Serial.println("Using timer wakeup as fallback");
     }
@@ -361,33 +344,23 @@ void enterDeepSleep() {
     delay(100);
 
     esp_deep_sleep_start();
-    
-    // 이 지점은 실행되지 않음 (Deep Sleep 후 재시작됨)
 }
 
 void setup() {
-    // Deep Sleep 웨이크업 후 GPIO Hold 해제
     gpio_hold_dis((gpio_num_t)NEOPIXEL_PIN);
     gpio_hold_dis((gpio_num_t)ACTION_PIN);
     
-    // GPIO 초기화
     pinMode(ACTION_PIN, OUTPUT);
     digitalWrite(ACTION_PIN, LOW);
     pinMode(MAGAZINE_PIN, INPUT_PULLUP);
 
-    pinMode(AMMO_RESET_PIN, INPUT_PULLUP); // 탄창 리셋 핀 초기화
+    pinMode(AMMO_RESET_PIN, INPUT_PULLUP);
 
     Serial.begin(115200);
-    delay(1000); // 시리얼 안정화
+    delay(1000);
     
-    // 부팅 카운트 증가
-    // ++rtc_bootCount;
-    // Serial.println("Boot number: " + String(rtc_bootCount));
-    
-    // 웨이크업 원인 출력
     printWakeupReason();
 
-    // 설정 초기화
     g_config.begin();
     g_config.initDefaults();
     
@@ -396,7 +369,8 @@ void setup() {
     Serial.println(":-]");
     Serial.println("Serial connected");
 
-    // 웨이크업 후 즉시 탄창 상태 확인
+    Serial.println("App version: 1.0.0");
+
     if (isMagazineInserted()) {
         Serial.println("Magazine is inserted - staying awake");
         updateActivityTime();
@@ -404,7 +378,6 @@ void setup() {
         Serial.println("Magazine not inserted - will sleep soon if no activity");
     }
 
-    // 트리거 카운터 설정
     uint32_t debounceDelay = g_config.getUInt("debounceDelay", 50);
     TriggerCounter::setup(TRIGGER_PIN, debounceDelay);
 
@@ -413,20 +386,16 @@ void setup() {
     Serial.print("currentAmmoCount: ");
     Serial.println(gameState.currentAmmoCount);
 
-    setupNeoPixel();
+    setupNeoPixel(); // 여기에서 깜박임 Task가 활성화됩니다.
     g_ts.startNow();
     updateActivityTime();
-
-    
 }
 
 void loop() {
     handleStateChanges();
     g_ts.execute();
 
-    if (deviceConnected) {
-        updateActivityTime();
-    } else {
+    {
         if (!g_isAdvertising) {
             Serial.println("Start Advertising...");
             // pServer->getAdvertising()->start();
@@ -435,21 +404,12 @@ void loop() {
             updateActivityTime();
         }
 
-        // 탄창이 삽입되어 있으면 절전 모드 방지
         if (isMagazineInserted()) {
             updateActivityTime();
         }
 
         if (millis() - lastActivityTime > INACTIVITY_SLEEP_DELAY_MS) {
-            enterDeepSleep(); // Deep Sleep 진입 (재시작됨)
-        }
-        else {
-            // 1초마다 상태 출력
-            // if (millis() % 1000 < 50) {
-            //     Serial.print("time elapsed: ");
-            //     Serial.println(millis() - lastActivityTime);
-                
-            // }   
+            enterDeepSleep();
         }
     }
 }
