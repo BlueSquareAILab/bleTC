@@ -8,20 +8,34 @@ namespace TriggerCounter {
     // 원자적 카운터 변수
     std::atomic<int> triggerCount(0);
     
-    // 트리거 핀과 디바운스 변수
-    volatile int triggerPinNumber = -1;  // 초기값 -1로 설정하여 미설정 상태 표시
-    volatile unsigned long lastDebounceTime = 0;
-    unsigned long debounceDelay = 50;
+    // [수정] 첫 번째 엣지(라이징/폴링)를 감지했는지 확인하는 상태 변수
+    std::atomic<bool> isFirstEdgeDetected(false);
     
+    // 트리거 핀과 디바운스 변수
+    volatile int triggerPinNumber = -1;
+    volatile unsigned long lastDebounceTime = 0;
+    unsigned long debounceDelay = 1000;
+    
+    // [수정] 엣지 감지 상태를 외부에서 리셋하는 함수
+    void resetEdgeState() {
+        isFirstEdgeDetected.store(false, std::memory_order_relaxed);
+    }
+
     // 인터럽트 처리 함수
     void IRAM_ATTR handleTriggerInterrupt() {
         unsigned long currentTime = millis();
         if ((currentTime - lastDebounceTime) > debounceDelay) {
-            triggerCount.fetch_add(1, std::memory_order_relaxed);
             lastDebounceTime = currentTime;
             
-            // 디버깅용 코드 (실제 인터럽트 핸들러에서는 Serial 사용 금지)
-            // 대신 인터럽트 발생 플래그를 설정하고 main 루프에서 확인하는 방식 사용 필요
+            // [수정] 두 번째 엣지에서 카운트하는 로직
+            if (isFirstEdgeDetected.load(std::memory_order_relaxed)) {
+                // 두 번째 엣지: 카운트하고 상태를 리셋
+                triggerCount.fetch_add(1, std::memory_order_relaxed);
+                isFirstEdgeDetected.store(false, std::memory_order_relaxed);
+            } else {
+                // 첫 번째 엣지: 상태만 true로 변경
+                isFirstEdgeDetected.store(true, std::memory_order_relaxed);
+            }
         }
     }
     
@@ -34,12 +48,11 @@ namespace TriggerCounter {
         
         pinMode(triggerPinNumber, INPUT_PULLUP);
         
-        // 디버그 메시지 출력
         Serial.println("TriggerCounter setup on pin: " + String(triggerPinNumber));
         Serial.println("Debounce delay: " + String(debounceDelay) + "ms");
         
-        // 인터럽트 설정 (FALLING: HIGH에서 LOW로 변경 시)
-        attachInterrupt(digitalPinToInterrupt(triggerPinNumber), handleTriggerInterrupt, FALLING);
+        // 라이징과 폴링 엣지 모두 감지하도록 CHANGE로 설정
+        attachInterrupt(digitalPinToInterrupt(triggerPinNumber), handleTriggerInterrupt, CHANGE);
         
         return true;
     }
@@ -50,9 +63,10 @@ namespace TriggerCounter {
     
     void clearTriggerCount() {
         triggerCount.store(0, std::memory_order_relaxed);
+        // [수정] 카운트 클리어 시 엣지 상태도 리셋
+        resetEdgeState(); 
     }
     
-    // 상태 확인 함수 추가
     bool isInitialized() {
         return triggerPinNumber >= 0;
     }

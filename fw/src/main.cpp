@@ -50,14 +50,14 @@ constexpr int NUM_PIXELS = 1;
 Adafruit_NeoPixel pixels(NUM_PIXELS, NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800);
 
 // --- [추가] 네오픽셀 깜박임 설정 ---
-constexpr unsigned long NEOPIXEL_ON_DURATION_MS = 50;  // 0.05초 ON
+constexpr unsigned long NEOPIXEL_ON_DURATION_MS = 150;  // 0.15초 ON
 constexpr unsigned long NEOPIXEL_OFF_DURATION_MS = 1000; // 1초 OFF
 bool g_isNeoPixelOn = false; // 네오픽셀 현재 ON/OFF 상태
 
 // 게임 상태 변수
 struct GameState {
-    int maxAmmoCount = 30;
-    int currentAmmoCount = 30;
+    int maxAmmoCount = 5;
+    int currentAmmoCount = 5;
     bool firingEnabled = true;
 };
 
@@ -245,7 +245,7 @@ void saveCurrentState() {
 
 void loadGameState() {
     // gameState.maxAmmoCount = g_config.getInt("maxAmmoCount", 30);
-    gameState.maxAmmoCount = 30; // 고정
+    gameState.maxAmmoCount = 5; // 고정
     gameState.currentAmmoCount = g_config.getInt("currentAmmo", gameState.maxAmmoCount);
     
     if (gameState.currentAmmoCount <= 0) {
@@ -266,7 +266,7 @@ void handleStateChanges() {
         resumeFiring();
         TriggerCounter::clearTriggerCount();
         oldTriggerCount = TriggerCounter::getTriggerCount();
-        updateNeoPixelColor(); // [기존 로직 유지] 색상 즉시 업데이트 및 깜박임 재시작
+        updateNeoPixelColor(); 
         Serial.println("Ammo reset triggered. Current ammo count reset to max.");
 
         saveCurrentState();
@@ -274,13 +274,22 @@ void handleStateChanges() {
 
     if (magazineInserted) {
         updateActivityTime();
+        
+        // [수정] 탄창이 방금 삽입되었는지 확인
+        if (!oldMagazineInserted) {
+            // 트리거의 이중 입력 대기 상태를 초기화
+            TriggerCounter::resetEdgeState(); // 함수 이름 변경
+            Serial.println("Magazine inserted. Trigger arm state has been reset.");
 
-        if (gameState.currentAmmoCount <= 0 && !oldMagazineInserted) {         
-            doActuatorPulse(pulseDuration);
-            updateNeoPixelColor(); // [기존 로직 유지] 색상 즉시 업데이트 및 깜박임 재시작
+            // 기존 로직 유지: 탄창 삽입 시 탄약이 없으면 액츄에이터 작동
+            if (gameState.currentAmmoCount <= 0) {
+                doActuatorPulse(pulseDuration);
+                updateNeoPixelColor();
+            }
         }
     }
     else {
+        // 탄창이 방금 제거된 경우 상태 저장
         if(oldMagazineInserted) {
             saveCurrentState();
         }
@@ -288,6 +297,8 @@ void handleStateChanges() {
 
     if (currentTriggerCount != oldTriggerCount || oldMagazineInserted != magazineInserted) {
         updateActivityTime();
+        
+        // 다음 루프를 위해 현재 탄창 상태 저장
         oldMagazineInserted = magazineInserted;
         
         if (oldTriggerCount < currentTriggerCount && gameState.firingEnabled) {
@@ -302,14 +313,13 @@ void handleStateChanges() {
             "," + String(ammoLevel) + ",0";
         
         Serial.println(data.c_str());
-        updateNeoPixelColor(); // [기존 로직 유지] 색상 즉시 업데이트 및 깜박임 재시작
+        updateNeoPixelColor(); 
     }
 }
 
 void enterDeepSleep() {
     Serial.println("Inactivity timeout. Entering deep sleep...");
     
-    // [추가] Deep Sleep 진입 전 태스크 비활성화 및 LED 끄기
     task_BlinkNeoPixel.disable();
     offNeoPixel();
 
@@ -369,7 +379,7 @@ void setup() {
     Serial.println(":-]");
     Serial.println("Serial connected");
 
-    Serial.println("App version: 1.0.0");
+    Serial.println("App version: 1.0.0 k14");
 
     if (isMagazineInserted()) {
         Serial.println("Magazine is inserted - staying awake");
@@ -378,15 +388,15 @@ void setup() {
         Serial.println("Magazine not inserted - will sleep soon if no activity");
     }
 
-    uint32_t debounceDelay = g_config.getUInt("debounceDelay", 50);
-    TriggerCounter::setup(TRIGGER_PIN, debounceDelay);
+    // uint32_t debounceDelay = g_config.getUInt("debounceDelay", 50);
+    TriggerCounter::setup(TRIGGER_PIN, 250);
 
     Serial.print("maxAmmoCount: ");
     Serial.println(gameState.maxAmmoCount);
     Serial.print("currentAmmoCount: ");
     Serial.println(gameState.currentAmmoCount);
 
-    setupNeoPixel(); // 여기에서 깜박임 Task가 활성화됩니다.
+    setupNeoPixel();
     g_ts.startNow();
     updateActivityTime();
 }
