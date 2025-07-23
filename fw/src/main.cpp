@@ -64,6 +64,8 @@ struct GameState {
     bool firingEnabled = true;
 };
 
+const int pulseDuration = 10000; // 액츄에이터 펄스 지속 시간 (ms)
+
 GameState gameState;
 
 // 함수 선언
@@ -161,7 +163,7 @@ void decreaseAmmoCount() {
     if (gameState.currentAmmoCount <= 0) {
         gameState.currentAmmoCount = 0;
         gameState.firingEnabled = false;
-        doActuatorPulse(2000); // 2초 동안 액츄에이터 작동
+        doActuatorPulse(pulseDuration); // 액츄에이터 작동
     }
 }
 
@@ -213,73 +215,6 @@ Task task_Cmd(300, TASK_FOREVER, []() {
     }
 }, &g_ts, false);
 
-// // BLE 콜백 클래스들
-// class MyServerCallbacks : public BLEServerCallbacks {
-//     void onConnect(BLEServer *pServer) {
-//         updateActivityTime();
-//         deviceConnected = true;
-//         g_isAdvertising = false;
-//         rtc_wasConnected = true; // RTC 메모리에 연결 상태 저장
-//         Serial.println("client connected");
-        
-//         pCharacteristic->setValue("welcome to ESP32 BLE Server");
-//         pCharacteristic->notify();
-        
-//         updateNeoPixelColor();
-        
-//         if (pServer) {
-//             Serial.print("current MTU size: ");
-//             Serial.println(pServer->getPeerMTU(pServer->getConnId()));
-//         }
-//     }
-
-//     void onDisconnect(BLEServer *pServer) {
-//         deviceConnected = false;
-//         rtc_wasConnected = false;
-//         Serial.println("client disconnected");
-//     }
-
-//     void onMtuChanged(BLEServer *pServer, esp_ble_gatts_cb_param_t *param) {
-//         Serial.print("MTU size changed to: ");
-//         Serial.println(param->mtu.mtu);
-//     }
-// };
-
-// class MyCharateristicCallbacks : public BLECharacteristicCallbacks {
-//     void onWrite(BLECharacteristic *pCharacteristic) {
-//         std::string value = pCharacteristic->getValue();
-
-//         if (value.length() > 0) {
-//             updateActivityTime();
-//             Serial.println("Received BLE command:");
-//             Serial.println(value.c_str());
-
-//             String response = ParseCmd(String(value.c_str()));
-//             Serial.println("Response:");
-//             Serial.println(response);
-
-//             if (pServer) {
-//                 Serial.print("current MTU size: ");
-//                 Serial.println(pServer->getPeerMTU(pServer->getConnId()));
-//             }
-
-//             pCharacteristic->setValue(response.c_str());
-//             pCharacteristic->notify();
-//         } 
-//     }
-
-//     void onRead(BLECharacteristic *pCharacteristic) {
-//         Serial.println("BLE read : ");
-//         std::string value = pCharacteristic->getValue();
-//         Serial.println(value.c_str());
-        
-//         if (pServer) {
-//             Serial.print("current MTU size: ");
-//             Serial.println(pServer->getPeerMTU(pServer->getConnId()));
-//         }
-//     }
-// };
-
 // 유틸리티 함수들
 void updateActivityTime() {
     lastActivityTime = millis();
@@ -296,7 +231,8 @@ void saveCurrentState() {
 }
 
 void loadGameState() {
-    gameState.maxAmmoCount = g_config.getInt("maxAmmoCount", 30);
+    // gameState.maxAmmoCount = g_config.getInt("maxAmmoCount", 30);
+    gameState.maxAmmoCount = 30; // 고정
     gameState.currentAmmoCount = g_config.getInt("currentAmmo", gameState.maxAmmoCount);
     
     if (gameState.currentAmmoCount <= 0) {
@@ -312,20 +248,40 @@ void handleStateChanges() {
     int currentTriggerCount = TriggerCounter::getTriggerCount();
     bool magazineInserted = isMagazineInserted();
 
-    if(!digitalRead(AMMO_RESET_PIN)) {
-        // 탄창 리셋 핀 눌림 감지        
-        gameState.currentAmmoCount = gameState.maxAmmoCount;        
+    if (!digitalRead(AMMO_RESET_PIN) && gameState.currentAmmoCount < gameState.maxAmmoCount) {
+        gameState.currentAmmoCount = gameState.maxAmmoCount;
+        resumeFiring();                                   // gameState.firingEnabled = true
+        TriggerCounter::clearTriggerCount();              // 내부 카운터 초기화
+        oldTriggerCount = TriggerCounter::getTriggerCount();  // 로컬 oldTriggerCount 동기화
+        updateNeoPixelColor();
+        Serial.println("Ammo reset triggered. Current ammo count reset to max.");
+
+        // 현재 상태 저장
+        saveCurrentState();
     }
+
+
+    // Serial.println(digitalRead(AMMO_RESET_PIN));
 
     if (magazineInserted) {
         updateActivityTime();
 
         //탄수가 0 이고 탄창이 삽입이 일어났다면 액츄에이터 작동
         if (gameState.currentAmmoCount <= 0 && !oldMagazineInserted) {            
-            doActuatorPulse(2000); // 2초 동안 액츄에이터 작동
+            // doActuatorPulse(2000); // 2초 동안 액츄에이터 작동
+            doActuatorPulse(pulseDuration); // 액츄에이터 작동
             updateNeoPixelColor();
         }
     }
+    else {
+        if(oldMagazineInserted) {
+            // 탄창이 제거되었지만 이전에 삽입되어 있었던 경우
+            saveCurrentState(); // 현재 상태 저장
+        }
+        
+    }
+
+
 
     if (currentTriggerCount != oldTriggerCount || oldMagazineInserted != magazineInserted) {
         updateActivityTime();
@@ -452,35 +408,16 @@ void setup() {
     uint32_t debounceDelay = g_config.getUInt("debounceDelay", 50);
     TriggerCounter::setup(TRIGGER_PIN, debounceDelay);
 
+    Serial.print("maxAmmoCount: ");
+    Serial.println(gameState.maxAmmoCount);
+    Serial.print("currentAmmoCount: ");
+    Serial.println(gameState.currentAmmoCount);
+
     setupNeoPixel();
     g_ts.startNow();
     updateActivityTime();
 
-    // // BLE 초기화
-    // BLEDevice::init(getDeviceName().c_str());
     
-    // pServer = BLEDevice::createServer();
-    // pServer->setCallbacks(new MyServerCallbacks());
-
-    // BLEService *pService = pServer->createService(SERVICE_UUID);
-
-    // pCharacteristic = pService->createCharacteristic(
-    //     CHARACTERISTIC_UUID,
-    //     BLECharacteristic::PROPERTY_READ |
-    //     BLECharacteristic::PROPERTY_WRITE |
-    //     BLECharacteristic::PROPERTY_NOTIFY |
-    //     BLECharacteristic::PROPERTY_INDICATE
-    // );
-
-    // pCharacteristic->addDescriptor(new BLE2902());
-    // pCharacteristic->setCallbacks(new MyCharateristicCallbacks());
-
-    // pService->start();
-    
-    // 이전에 연결되어 있었다면 더 빨리 절전 모드로 전환
-    // if (!isMagazineInserted()) {
-    //     lastActivityTime = millis() - (INACTIVITY_SLEEP_DELAY_MS - 30000); // 30초 후 슬립
-    // }
 }
 
 void loop() {
