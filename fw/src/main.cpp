@@ -1,9 +1,5 @@
 #include <Arduino.h>
 #include <Adafruit_NeoPixel.h>
-// #include <BLEDevice.h>
-// #include <BLEServer.h>
-// #include <BLEUtils.h>
-// #include <BLE2902.h>
 #include <vector>
 #include <TaskScheduler.h>
 #include <esp_sleep.h>
@@ -16,7 +12,7 @@ Scheduler g_ts;
 Config g_config;
 
 // 시스템 상수
-constexpr unsigned long INACTIVITY_SLEEP_DELAY_MS = 30 * 1000UL; // 30초
+constexpr unsigned long INACTIVITY_SLEEP_DELAY_MS = 30 * 60 * 1000UL; // 30분
 
 // 전역 상태 변수
 unsigned long lastActivityTime = 0;
@@ -379,7 +375,7 @@ void setup() {
     Serial.println(":-]");
     Serial.println("Serial connected");
 
-    Serial.println("App version: 1.0.0 k14");
+    Serial.println("App version: 1.0.1 k14");
 
     if (isMagazineInserted()) {
         Serial.println("Magazine is inserted - staying awake");
@@ -389,7 +385,7 @@ void setup() {
     }
 
     // uint32_t debounceDelay = g_config.getUInt("debounceDelay", 50);
-    TriggerCounter::setup(TRIGGER_PIN, 250);
+    TriggerCounter::setup(TRIGGER_PIN, 50);
 
     Serial.print("maxAmmoCount: ");
     Serial.println(gameState.maxAmmoCount);
