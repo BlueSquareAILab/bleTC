@@ -1,9 +1,5 @@
 #include <Arduino.h>
 #include <Adafruit_NeoPixel.h>
-// #include <BLEDevice.h>
-// #include <BLEServer.h>
-// #include <BLEUtils.h>
-// #include <BLE2902.h>
 #include <vector>
 #include <TaskScheduler.h>
 #include <esp_sleep.h>
@@ -245,7 +241,7 @@ void saveCurrentState() {
 
 void loadGameState() {
     // gameState.maxAmmoCount = g_config.getInt("maxAmmoCount", 30);
-    gameState.maxAmmoCount = 30; // 고정
+    gameState.maxAmmoCount = 32; // 고정
     gameState.currentAmmoCount = g_config.getInt("currentAmmo", gameState.maxAmmoCount);
     
     if (gameState.currentAmmoCount <= 0) {
