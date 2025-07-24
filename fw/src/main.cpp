@@ -241,7 +241,7 @@ void saveCurrentState() {
 
 void loadGameState() {
     // gameState.maxAmmoCount = g_config.getInt("maxAmmoCount", 30);
-    gameState.maxAmmoCount = 5; // 고정
+    gameState.maxAmmoCount = 11; // 고정
     gameState.currentAmmoCount = g_config.getInt("currentAmmo", gameState.maxAmmoCount);
     
     if (gameState.currentAmmoCount <= 0) {
