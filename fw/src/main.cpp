@@ -12,7 +12,7 @@ Scheduler g_ts;
 Config g_config;
 
 // 시스템 상수
-constexpr unsigned long INACTIVITY_SLEEP_DELAY_MS = 30 * 60 * 1000UL; // 30분
+constexpr unsigned long INACTIVITY_SLEEP_DELAY_MS = 3 * 60 * 1000UL; // 3분
 
 // 전역 상태 변수
 unsigned long lastActivityTime = 0;
@@ -57,7 +57,7 @@ struct GameState {
     bool firingEnabled = true;
 };
 
-const int pulseDuration = 10000; // 액츄에이터 펄스 지속 시간 (ms)
+const int pulseDuration = 5000; // 액츄에이터 펄스 지속 시간 (ms)
 
 GameState gameState;
 
@@ -153,7 +153,7 @@ void decreaseAmmoCount() {
     if (gameState.currentAmmoCount <= 0) {
         gameState.currentAmmoCount = 0;
         gameState.firingEnabled = false;
-        doActuatorPulse(pulseDuration); // 액츄에이터 작동
+        // doActuatorPulse(pulseDuration); // 액츄에이터 작동
     }
 }
 
@@ -241,7 +241,7 @@ void saveCurrentState() {
 
 void loadGameState() {
     // gameState.maxAmmoCount = g_config.getInt("maxAmmoCount", 30);
-    gameState.maxAmmoCount = 11; // 고정
+    // gameState.maxAmmoCount = 11; // 고정
     gameState.currentAmmoCount = g_config.getInt("currentAmmo", gameState.maxAmmoCount);
     
     if (gameState.currentAmmoCount <= 0) {
@@ -252,14 +252,16 @@ void loadGameState() {
 // 상태 변화 처리
 void handleStateChanges() {
     static int oldTriggerCount = 0;
-    static bool oldMagazineInserted = false;
+    // static bool oldMagazineInserted = false;
     
     int currentTriggerCount = TriggerCounter::getTriggerCount();
-    bool magazineInserted = isMagazineInserted();
+    // bool magazineInserted = isMagazineInserted();
 
+    //재장전
     if (!digitalRead(AMMO_RESET_PIN) && gameState.currentAmmoCount < gameState.maxAmmoCount) {
         gameState.currentAmmoCount = gameState.maxAmmoCount;
         resumeFiring();
+        digitalWrite(ACTION_PIN, LOW); // 액츄에이터 OFF
         TriggerCounter::clearTriggerCount();
         oldTriggerCount = TriggerCounter::getTriggerCount();
         updateNeoPixelColor(); 
@@ -268,49 +270,30 @@ void handleStateChanges() {
         saveCurrentState();
     }
 
-    if (magazineInserted) {
-        updateActivityTime();
-        
-        // [수정] 탄창이 방금 삽입되었는지 확인
-        if (!oldMagazineInserted) {
-            // 트리거의 이중 입력 대기 상태를 초기화
-            TriggerCounter::resetEdgeState(); // 함수 이름 변경
-            Serial.println("Magazine inserted. Trigger arm state has been reset.");
 
-            // 기존 로직 유지: 탄창 삽입 시 탄약이 없으면 액츄에이터 작동
-            if (gameState.currentAmmoCount <= 0) {
-                doActuatorPulse(pulseDuration);
-                updateNeoPixelColor();
-            }
-        }
+    if (currentTriggerCount != oldTriggerCount ) {
+        decreaseAmmoCount();
+        oldTriggerCount = currentTriggerCount;
+        updateNeoPixelColor(); 
+
+        Serial.println("Trigger count changed. Current ammo count: " + String(gameState.currentAmmoCount));
+
     }
-    else {
-        // 탄창이 방금 제거된 경우 상태 저장
-        if(oldMagazineInserted) {
+
+    // — 방향 이벤트 처리 —
+    if (TriggerCounter::hasDirectionEvent()) {
+        int dir = TriggerCounter::getLastDirection();
+        TriggerCounter::clearDirectionEvent();
+        if (dir == 1 && gameState.currentAmmoCount == 0) {
+            // 빈 탄창 상태에서 TRIGGER->MAGAZINE 순서(0)로 들어오면 배출 액츄에이터 작동
+            doActuatorPulse(pulseDuration);
+            updateNeoPixelColor();
+            Serial.println("Magazine eject actuator activated (empty & reverse direction).");
             saveCurrentState();
         }
     }
 
-    if (currentTriggerCount != oldTriggerCount || oldMagazineInserted != magazineInserted) {
-        updateActivityTime();
-        
-        // 다음 루프를 위해 현재 탄창 상태 저장
-        oldMagazineInserted = magazineInserted;
-        
-        if (oldTriggerCount < currentTriggerCount && gameState.firingEnabled) {
-            decreaseAmmoCount();
-        }
-        
-        oldTriggerCount = currentTriggerCount;
-
-        int ammoLevel = getAmmoLevel();
-        String data = "#," + String(currentTriggerCount) + "," + String(gameState.currentAmmoCount) + 
-            "," + String(gameState.firingEnabled) + "," + String(magazineInserted) + 
-            "," + String(ammoLevel) + ",0";
-        
-        Serial.println(data.c_str());
-        updateNeoPixelColor(); 
-    }
+    
 }
 
 void enterDeepSleep() {
@@ -385,7 +368,8 @@ void setup() {
     }
 
     // uint32_t debounceDelay = g_config.getUInt("debounceDelay", 50);
-    TriggerCounter::setup(TRIGGER_PIN, 50);
+    // TriggerCounter::setup(TRIGGER_PIN, 300); // 디바운스 딜레이를 300ms로 설정
+    TriggerCounter::setup(TRIGGER_PIN, MAGAZINE_PIN, 300); // 두 핀, 디바운스 300ms
 
     Serial.print("maxAmmoCount: ");
     Serial.println(gameState.maxAmmoCount);

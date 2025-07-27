@@ -1,3 +1,4 @@
+// triggerCounter.hpp
 #ifndef TRIGGER_COUNTER_HPP
 #define TRIGGER_COUNTER_HPP
 
@@ -5,70 +6,90 @@
 #include <atomic>
 
 namespace TriggerCounter {
-    // 원자적 카운터 변수
+    // 카운트(오직 방향==1일 때만 증가)
     std::atomic<int> triggerCount(0);
-    
-    // [수정] 첫 번째 엣지(라이징/폴링)를 감지했는지 확인하는 상태 변수
-    std::atomic<bool> isFirstEdgeDetected(false);
-    
-    // 트리거 핀과 디바운스 변수
-    volatile int triggerPinNumber = -1;
-    volatile unsigned long lastDebounceTime = 0;
-    unsigned long debounceDelay = 1000;
-    
-    // [수정] 엣지 감지 상태를 외부에서 리셋하는 함수
-    void resetEdgeState() {
-        isFirstEdgeDetected.store(false, std::memory_order_relaxed);
-    }
 
-    // 인터럽트 처리 함수
-    void IRAM_ATTR handleTriggerInterrupt() {
-        unsigned long currentTime = millis();
-        if ((currentTime - lastDebounceTime) > debounceDelay) {
-            lastDebounceTime = currentTime;
-            
-            // [수정] 두 번째 엣지에서 카운트하는 로직
-            if (isFirstEdgeDetected.load(std::memory_order_relaxed)) {
-                // 두 번째 엣지: 카운트하고 상태를 리셋
+    // 핀 번호
+    volatile int triggerPinNumber  = -1;
+    volatile int magazinePinNumber = -1;
+
+    // 디바운스 타이밍
+    volatile unsigned long lastDebounceTrigger  = 0;
+    volatile unsigned long lastDebounceMagazin  = 0;
+    unsigned long debounceDelay = 1000;
+
+    // 최근 엣지 타입 (0=TRIGGER, 1=MAGAZINE, -1=없음)
+    volatile int lastEdge = -1;
+
+    // 마지막으로 계산된 방향 (0 또는 1)
+    std::atomic<int> lastDirection(-1);
+    // 방향 이벤트 플래그
+    std::atomic<bool> directionEvent(false);
+
+    // 공통: 두 엣지가 연달아 들어왔을 때 방향 계산 함수
+    inline void IRAM_ATTR processEdge(int thisEdge) {
+        if (lastEdge < 0 || lastEdge == thisEdge) {
+            // 첫 엣지거나 동일 핀 연속 토글: 상태만 저장
+            lastEdge = thisEdge;
+        } else {
+            // 다른 핀에서 온 두 번째 엣지
+            // TRIGGER->MAGAZINE  ⇒ 0
+            // MAGAZINE->TRIGGER  ⇒ 1
+            int dir = (lastEdge == 1 && thisEdge == 0) ? 1 : 0;
+            lastDirection.store(dir, std::memory_order_relaxed);
+            directionEvent.store(true, std::memory_order_relaxed);
+            if (dir == 0) {
                 triggerCount.fetch_add(1, std::memory_order_relaxed);
-                isFirstEdgeDetected.store(false, std::memory_order_relaxed);
-            } else {
-                // 첫 번째 엣지: 상태만 true로 변경
-                isFirstEdgeDetected.store(true, std::memory_order_relaxed);
             }
+            lastEdge = thisEdge;
         }
     }
-    
-    // 설정 함수
-    bool setup(int pin, unsigned long delay = 50) {
-        if (pin < 0) return false;
-        
-        triggerPinNumber = pin;
-        debounceDelay = delay;
-        
+
+    void IRAM_ATTR handleTriggerInterrupt() {
+        unsigned long now = millis();
+        if (now - lastDebounceTrigger > debounceDelay) {
+            lastDebounceTrigger = now;
+            processEdge(0);
+        }
+    }
+
+    void IRAM_ATTR handleMagazineInterrupt() {
+        unsigned long now = millis();
+        if (now - lastDebounceMagazin > debounceDelay) {
+            lastDebounceMagazin = now;
+            processEdge(1);
+        }
+    }
+
+    // setup: 트리거 핀, 매거진 핀, 디바운스(ms)
+    bool setup(int tPin, int mPin, unsigned long delay = 50) {
+        if (tPin < 0 || mPin < 0) return false;
+        triggerPinNumber  = tPin;
+        magazinePinNumber = mPin;
+        debounceDelay     = delay;
+
         pinMode(triggerPinNumber, INPUT_PULLUP);
-        
-        Serial.println("TriggerCounter setup on pin: " + String(triggerPinNumber));
-        Serial.println("Debounce delay: " + String(debounceDelay) + "ms");
-        
-        // 라이징과 폴링 엣지 모두 감지하도록 CHANGE로 설정
-        attachInterrupt(digitalPinToInterrupt(triggerPinNumber), handleTriggerInterrupt, CHANGE);
-        
+        pinMode(magazinePinNumber, INPUT_PULLUP);
+
+        attachInterrupt(digitalPinToInterrupt(triggerPinNumber),
+                        handleTriggerInterrupt, CHANGE);
+        attachInterrupt(digitalPinToInterrupt(magazinePinNumber),
+                        handleMagazineInterrupt, CHANGE);
+
+        Serial.printf("TriggerCounter setup on pins: %d, %d (debounce %lums)\n",
+                      triggerPinNumber, magazinePinNumber, debounceDelay);
         return true;
     }
-    
-    int getTriggerCount() {
-        return triggerCount.load(std::memory_order_relaxed);
-    }
-    
+
+    int  getTriggerCount()       { return triggerCount.load(std::memory_order_relaxed); }
+    int  getLastDirection()      { return lastDirection.load(std::memory_order_relaxed); }
+    bool hasDirectionEvent()     { return directionEvent.load(std::memory_order_relaxed); }
+    void clearDirectionEvent()   { directionEvent.store(false, std::memory_order_relaxed); }
     void clearTriggerCount() {
         triggerCount.store(0, std::memory_order_relaxed);
-        // [수정] 카운트 클리어 시 엣지 상태도 리셋
-        resetEdgeState(); 
-    }
-    
-    bool isInitialized() {
-        return triggerPinNumber >= 0;
+        lastEdge = -1;
+        lastDirection.store(-1, std::memory_order_relaxed);
+        directionEvent.store(false, std::memory_order_relaxed);
     }
 }
 
