@@ -36,8 +36,8 @@ extern struct GameState {
 } gameState;
 
 // 게임 제어 함수들
-extern void stopFiring();
-extern void resumeFiring();
+// extern void stopFiring();
+// extern void resumeFiring();
 extern void doActuatorPulse(int duration = 1000);
 extern void sleepNow();
 extern void updateNeoPixelColor();
@@ -222,10 +222,10 @@ String ParseCmd(String _strLine) {
             gameState.currentAmmoCount = constrain(newAmmo, 0, gameState.maxAmmoCount);
             
             if (gameState.currentAmmoCount <= 0) {
-                stopFiring();
+                // stopFiring();
                 doActuatorPulse(1000);
             } else {
-                resumeFiring();
+                // resumeFiring();
             }
             
             return makeValueResponse("ok", "ammo", String(gameState.currentAmmoCount));
@@ -239,14 +239,14 @@ String ParseCmd(String _strLine) {
         }
         else if (subCmd == "reset") {
             gameState.currentAmmoCount = gameState.maxAmmoCount;
-            resumeFiring();
+            // resumeFiring();
 
             updateNeoPixelColor();
             
             return makeValueResponse("ok", "ammo", String(gameState.currentAmmoCount));
         }
         else if (subCmd == "stop") {
-            stopFiring();
+            // stopFiring();
             
             String response = "result: ok\n";
             response += "message: firing stopped\n";
@@ -255,7 +255,7 @@ String ParseCmd(String _strLine) {
         }
         else if (subCmd == "resume") {
             if (gameState.currentAmmoCount > 0) {
-                resumeFiring();
+                // resumeFiring();
                 String response = "result: ok\n";
                 response += "message: firing resumed\n";
                 response += "firingEnabled: true\n";

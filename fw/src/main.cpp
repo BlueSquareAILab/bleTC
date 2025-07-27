@@ -12,7 +12,7 @@ Scheduler g_ts;
 Config g_config;
 
 // 시스템 상수
-constexpr unsigned long INACTIVITY_SLEEP_DELAY_MS = 30 * 1000UL; // 30초
+constexpr unsigned long INACTIVITY_SLEEP_DELAY_MS = 10 * 60 * 1000UL; // 10분
 
 // 전역 상태 변수
 unsigned long lastActivityTime = 0;
@@ -54,7 +54,7 @@ bool g_isNeoPixelOn = false; // 네오픽셀 현재 ON/OFF 상태
 struct GameState {
     int maxAmmoCount = 32;
     int currentAmmoCount = 32;
-    bool firingEnabled = true;
+    // bool firingEnabled = true;
 };
 
 const int pulseDuration = 5000; // 액츄에이터 펄스 지속 시간 (ms)
@@ -114,7 +114,7 @@ void printWakeupReason() {
 void clearTriggerCount() {
     TriggerCounter::clearTriggerCount();
     gameState.currentAmmoCount = gameState.maxAmmoCount;
-    gameState.firingEnabled = true;
+    // gameState.firingEnabled = true;
     digitalWrite(ACTION_PIN, LOW);
 }
 
@@ -130,13 +130,13 @@ int getAmmoLevel() {
     return (float(gameState.currentAmmoCount) / float(gameState.maxAmmoCount)) * 100;
 }
 
-void stopFiring() {
-    gameState.firingEnabled = false;
-}
+// void stopFiring() {
+//     gameState.firingEnabled = false;
+// }
 
-void resumeFiring() {
-    gameState.firingEnabled = true;
-}
+// void resumeFiring() {
+//     gameState.firingEnabled = true;
+// }
 
 // 액츄에이터 제어
 Task task_EndPulse(TASK_IMMEDIATE, TASK_ONCE, []() {
@@ -148,11 +148,11 @@ void doActuatorPulse(int duration = 1000) {
     task_EndPulse.restartDelayed(duration);
 }
 
-void decreaseAmmoCount() {
-    gameState.currentAmmoCount--;
+void decreaseAmmoCount(int decValue) {
+    gameState.currentAmmoCount -= decValue;
     if (gameState.currentAmmoCount <= 0) {
         gameState.currentAmmoCount = 0;
-        gameState.firingEnabled = false;
+        // gameState.firingEnabled = false;
         doActuatorPulse(pulseDuration); // 액츄에이터 작동
     }
 }
@@ -245,7 +245,7 @@ void loadGameState() {
     gameState.currentAmmoCount = g_config.getInt("currentAmmo", gameState.maxAmmoCount);
     
     if (gameState.currentAmmoCount <= 0) {
-        stopFiring();
+        // stopFiring();
     }
 }
 
@@ -259,39 +259,40 @@ void handleStateChanges() {
 
     if (!digitalRead(AMMO_RESET_PIN) && gameState.currentAmmoCount < gameState.maxAmmoCount) {
         gameState.currentAmmoCount = gameState.maxAmmoCount;
-        resumeFiring();
         TriggerCounter::clearTriggerCount();
-        oldTriggerCount = TriggerCounter::getTriggerCount();
+        
         updateNeoPixelColor(); // [기존 로직 유지] 색상 즉시 업데이트 및 깜박임 재시작
         Serial.println("Ammo reset triggered. Current ammo count reset to max.");
 
         saveCurrentState();
     }
 
-    if (magazineInserted) {
-        updateActivityTime();
-
-        if (gameState.currentAmmoCount <= 0 && !oldMagazineInserted) {         
+    if( !magazineInserted && oldMagazineInserted) {
+        // 탄창이 제거되었을 때
+        Serial.println("Magazine removed.");
+        
+        updateNeoPixelColor(); // [기존 로직 유지] 색상 즉시 업데이트 및 깜박임 재시작
+    }
+    // 탄창이 삽입되었을 때
+    else if (magazineInserted && !oldMagazineInserted) {
+        Serial.println("Magazine inserted. ");
+        
+        if( gameState.currentAmmoCount <= 0) {
             doActuatorPulse(pulseDuration);
-            updateNeoPixelColor(); // [기존 로직 유지] 색상 즉시 업데이트 및 깜박임 재시작
         }
+        updateNeoPixelColor(); // [기존 로직 유지] 색상 즉시 업데이트 및 깜박임 재시작
     }
-    else {
-        if(oldMagazineInserted) {
-            saveCurrentState();
-        }
-    }
+
 
 
     if (currentTriggerCount != oldTriggerCount) {
         updateActivityTime();
-        if (oldTriggerCount < currentTriggerCount && gameState.firingEnabled) {
-            decreaseAmmoCount();
+        if (oldTriggerCount < currentTriggerCount) {
+            decreaseAmmoCount(currentTriggerCount - oldTriggerCount);
         }
-        int ammoLevel = getAmmoLevel();
+        
         String data = "#," + String(currentTriggerCount) + "," + String(gameState.currentAmmoCount) + 
-            "," + String(gameState.firingEnabled) + "," + String(magazineInserted) + 
-            "," + String(ammoLevel) + ",0";
+            "," + String(magazineInserted);
         
         Serial.println(data.c_str());
         updateNeoPixelColor(); // [기존 로직 유지] 색상 즉시 업데이트 및 깜박임 재시작
@@ -374,7 +375,7 @@ void setup() {
     }
 
     // uint32_t debounceDelay = g_config.getUInt("debounceDelay", 50);
-    TriggerCounter::setup(TRIGGER_PIN, 25, 500);
+    TriggerCounter::setup(TRIGGER_PIN, 15, 500);
 
     Serial.print("maxAmmoCount: ");
     Serial.println(gameState.maxAmmoCount);
