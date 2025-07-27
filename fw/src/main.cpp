@@ -52,12 +52,12 @@ bool g_isNeoPixelOn = false; // 네오픽셀 현재 ON/OFF 상태
 
 // 게임 상태 변수
 struct GameState {
-    int maxAmmoCount = 30;
-    int currentAmmoCount = 30;
+    int maxAmmoCount = 32;
+    int currentAmmoCount = 32;
     bool firingEnabled = true;
 };
 
-const int pulseDuration = 10000; // 액츄에이터 펄스 지속 시간 (ms)
+const int pulseDuration = 5000; // 액츄에이터 펄스 지속 시간 (ms)
 
 GameState gameState;
 
@@ -241,7 +241,7 @@ void saveCurrentState() {
 
 void loadGameState() {
     // gameState.maxAmmoCount = g_config.getInt("maxAmmoCount", 30);
-    gameState.maxAmmoCount = 32; // 고정
+    // gameState.maxAmmoCount = 32; // 고정
     gameState.currentAmmoCount = g_config.getInt("currentAmmo", gameState.maxAmmoCount);
     
     if (gameState.currentAmmoCount <= 0) {
@@ -282,16 +282,12 @@ void handleStateChanges() {
         }
     }
 
-    if (currentTriggerCount != oldTriggerCount || oldMagazineInserted != magazineInserted) {
+
+    if (currentTriggerCount != oldTriggerCount) {
         updateActivityTime();
-        oldMagazineInserted = magazineInserted;
-        
         if (oldTriggerCount < currentTriggerCount && gameState.firingEnabled) {
             decreaseAmmoCount();
         }
-        
-        oldTriggerCount = currentTriggerCount;
-
         int ammoLevel = getAmmoLevel();
         String data = "#," + String(currentTriggerCount) + "," + String(gameState.currentAmmoCount) + 
             "," + String(gameState.firingEnabled) + "," + String(magazineInserted) + 
@@ -300,6 +296,9 @@ void handleStateChanges() {
         Serial.println(data.c_str());
         updateNeoPixelColor(); // [기존 로직 유지] 색상 즉시 업데이트 및 깜박임 재시작
     }
+
+    oldMagazineInserted = magazineInserted;
+    oldTriggerCount = currentTriggerCount;
 }
 
 void enterDeepSleep() {
@@ -365,7 +364,7 @@ void setup() {
     Serial.println(":-]");
     Serial.println("Serial connected");
 
-    Serial.println("App version: 1.0.0");
+    Serial.println("App version: 1.0.1");
 
     if (isMagazineInserted()) {
         Serial.println("Magazine is inserted - staying awake");
@@ -374,8 +373,8 @@ void setup() {
         Serial.println("Magazine not inserted - will sleep soon if no activity");
     }
 
-    uint32_t debounceDelay = g_config.getUInt("debounceDelay", 50);
-    TriggerCounter::setup(TRIGGER_PIN, debounceDelay);
+    // uint32_t debounceDelay = g_config.getUInt("debounceDelay", 50);
+    TriggerCounter::setup(TRIGGER_PIN, 25, 500);
 
     Serial.print("maxAmmoCount: ");
     Serial.println(gameState.maxAmmoCount);
