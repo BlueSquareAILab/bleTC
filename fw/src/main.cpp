@@ -287,15 +287,19 @@ void handleStateChanges() {
 
     if (currentTriggerCount != oldTriggerCount) {
         updateActivityTime();
-        if (oldTriggerCount < currentTriggerCount) {
-            decreaseAmmoCount(currentTriggerCount - oldTriggerCount);
-        }
+        decreaseAmmoCount(1);
+        // if (oldTriggerCount < currentTriggerCount) {
+        //     decreaseAmmoCount(currentTriggerCount - oldTriggerCount);
+        // }                
+
+        // Serial.print(currentTriggerCount);
+        // Serial.print(" : ");
+        // Serial.println(gameState.currentAmmoCount);
         
-        String data = "#," + String(currentTriggerCount) + "," + String(gameState.currentAmmoCount) + 
-            "," + String(magazineInserted);
-        
-        Serial.println(data.c_str());
-        updateNeoPixelColor(); // [기존 로직 유지] 색상 즉시 업데이트 및 깜박임 재시작
+        // String data = "#," + String(currentTriggerCount) + "," + String(gameState.currentAmmoCount) + 
+        //     "," + String(magazineInserted);        
+        // Serial.println(data.c_str());
+        updateNeoPixelColor(); 
     }
 
     oldMagazineInserted = magazineInserted;
@@ -374,8 +378,8 @@ void setup() {
         Serial.println("Magazine not inserted - will sleep soon if no activity");
     }
 
-    // uint32_t debounceDelay = g_config.getUInt("debounceDelay", 50);
-    TriggerCounter::setup(TRIGGER_PIN, 15, 500);
+    // uint32_t debounceDelay = g_config.getUInt("debounceDelay", 0);
+    TriggerCounter::setup(TRIGGER_PIN, 10, 500);
 
     Serial.print("maxAmmoCount: ");
     Serial.println(gameState.maxAmmoCount);
