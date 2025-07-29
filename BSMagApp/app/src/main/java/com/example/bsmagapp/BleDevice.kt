@@ -5,17 +5,19 @@ import android.bluetooth.BluetoothDevice
 data class BleDevice(
     val device: BluetoothDevice,
     val rssi: Int,
-    val scanRecord: ByteArray?
+    val scanRecord: ByteArray?,
+    val originalName: String? = null  // 스캔 시점의 원본 이름 저장
 ) {
     val name: String
-        get() = device.name ?: "Unknown BSQTC Device"
+        get() = originalName ?: device.name ?: "Unknown BSQTC Device"
 
     val address: String
         get() = device.address
 
     // BSQTC 디바이스인지 확인하는 함수
     fun isBSQTCDevice(): Boolean {
-        return device.name?.startsWith("BSQTC", ignoreCase = true) == true
+        return originalName?.startsWith("BSQTC", ignoreCase = true) == true ||
+               device.name?.startsWith("BSQTC", ignoreCase = true) == true
     }
 
     override fun equals(other: Any?): Boolean {

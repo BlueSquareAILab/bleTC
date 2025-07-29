@@ -42,6 +42,15 @@
                     android:textColor="#666666"
                     android:layout_marginTop="4dp" />
 
+<!--                <TextView-->
+<!--                    android:id="@+id/configText"-->
+<!--                    android:layout_width="wrap_content"-->
+<!--                    android:layout_height="wrap_content"-->
+<!--                    android:text="debounceDelay: -ms, ammo : _/_"-->
+<!--                    android:textSize="14sp"-->
+<!--                    android:textColor="#666666"-->
+<!--                    android:layout_marginTop="4dp" />-->
+
             </LinearLayout>
 
             <TextView
@@ -68,14 +77,48 @@
                 android:id="@+id/resetAmmoButton"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Ammo Reset"
+                android:text="Ammo"
                 android:textSize="14sp"
                 android:padding="8dp"
                 android:backgroundTint="#FF5722"
                 android:textColor="#FFFFFF"
                 android:layout_marginStart="8dp" />
 
+            <Button
+                android:id="@+id/pulseTestButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Pulse"
+                android:textSize="14sp"
+                android:padding="8dp"
+                android:backgroundTint="#2196F3"
+                android:textColor="#FFFFFF"
+                android:layout_marginStart="8dp" />
+            <Button
+                android:id="@+id/configDumpButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Read"
+                android:textSize="14sp"
+                android:padding="8dp"
+                android:backgroundTint="#008800"
+                android:textColor="#FFFFFF"
+                android:layout_marginStart="8dp" />
+            <Button
+                android:id="@+id/configSetButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Write"
+                android:textSize="14sp"
+                android:padding="8dp"
+                android:backgroundTint="#ff0000"
+                android:textColor="#FFFFFF"
+                android:layout_marginStart="8dp" />
+
+
+
         </LinearLayout>
+
 
     </LinearLayout>
 

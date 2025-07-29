@@ -8,20 +8,32 @@
     android:padding="16dp"
     tools:context=".MainActivity">
 
+    <!-- 버전 정보 텍스트 추가 -->
+    <TextView
+        android:id="@+id/versionText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="v1.0.0"
+        android:textSize="12sp"
+        android:textColor="#999999"
+        android:layout_marginBottom="8dp" />
+
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="BSQ AI magazine"
-        android:textSize="24sp"
-        android:textStyle="bold"
         android:layout_gravity="center_horizontal"
-        android:layout_marginBottom="16dp" />
+        android:layout_marginBottom="16dp"
+        android:text="BSQ Magazine AI App"
+        android:textSize="24sp"
+        android:textStyle="bold" />
+    
 
+    <!-- 스캔 버튼들 -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:layout_marginBottom="16dp">
+        android:layout_marginBottom="12dp">
 
         <Button
             android:id="@+id/scanButton"
@@ -29,7 +41,7 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:text="스캔 시작"
-            android:layout_marginEnd="8dp"
+            android:layout_marginEnd="4dp"
             android:backgroundTint="#6200EE" />
 
         <Button
@@ -38,26 +50,77 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:text="스캔 중지"
-            android:layout_marginStart="8dp"
+            android:layout_marginStart="4dp"
             android:backgroundTint="#B00020" />
 
     </LinearLayout>
 
-    <TextView
-        android:layout_width="wrap_content"
+    <!-- 순회 처리 버튼 -->
+    <Button
+        android:id="@+id/sequentialButton"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="BSQTC 디바이스 검색:"
+        android:text="전체 재장전 (0개)"
         android:textSize="16sp"
         android:textStyle="bold"
-        android:layout_marginBottom="8dp" />
+        android:backgroundTint="#FF9800"
+        android:textColor="#FFFFFF"
+        android:layout_marginBottom="16dp"
+        android:padding="12dp"
+        android:enabled="false" />
 
+    <!-- 스캔 상태 표시 -->
     <TextView
-        android:layout_width="wrap_content"
+        android:id="@+id/scanStatusText"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="※ BSQTC로 시작하는 디바이스만 표시됩니다"
-        android:textSize="12sp"
-        android:textColor="#666666"
-        android:layout_marginBottom="8dp" />
+        android:text="스캔 대기 중"
+        android:textSize="14sp"
+        android:textStyle="bold"
+        android:textColor="#2196F3"
+        android:gravity="center"
+        android:background="#F3F3F3"
+        android:padding="8dp"
+        android:layout_marginBottom="16dp"
+        android:drawablePadding="8dp" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginBottom="12dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="delay"
+            ></TextView>
+        <EditText
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:id="@+id/edtDebounceDelay"
+            android:hint="debounceDelay"
+            android:inputType="numberDecimal"
+        ></EditText>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="MaxAmmo"
+            android:layout_marginLeft="4dp"
+            ></TextView>
+
+            <EditText
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:id="@+id/edtAmmo"
+                android:hint="ammo"
+                android:inputType="numberDecimal"
+        ></EditText>
+
+        </LinearLayout>
+
+
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/recyclerView"
