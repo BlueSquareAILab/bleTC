@@ -283,22 +283,9 @@ void handleStateChanges() {
         updateNeoPixelColor(); // [기존 로직 유지] 색상 즉시 업데이트 및 깜박임 재시작
     }
 
-
-
     if (currentTriggerCount != oldTriggerCount) {
         updateActivityTime();
         decreaseAmmoCount(1);
-        // if (oldTriggerCount < currentTriggerCount) {
-        //     decreaseAmmoCount(currentTriggerCount - oldTriggerCount);
-        // }                
-
-        // Serial.print(currentTriggerCount);
-        // Serial.print(" : ");
-        // Serial.println(gameState.currentAmmoCount);
-        
-        // String data = "#," + String(currentTriggerCount) + "," + String(gameState.currentAmmoCount) + 
-        //     "," + String(magazineInserted);        
-        // Serial.println(data.c_str());
         updateNeoPixelColor(); 
     }
 
@@ -379,7 +366,7 @@ void setup() {
     }
 
     // uint32_t debounceDelay = g_config.getUInt("debounceDelay", 0);
-    TriggerCounter::setup(TRIGGER_PIN, 10, 500);
+    TriggerCounter::setup(TRIGGER_PIN, 0, 500);
 
     Serial.print("maxAmmoCount: ");
     Serial.println(gameState.maxAmmoCount);
