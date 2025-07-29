@@ -12,7 +12,7 @@ Scheduler g_ts;
 Config g_config;
 
 // 시스템 상수
-constexpr unsigned long INACTIVITY_SLEEP_DELAY_MS = 3 * 60 * 1000UL; // 3분
+constexpr unsigned long INACTIVITY_SLEEP_DELAY_MS = 20 * 60 * 1000UL; // 20분
 
 // 전역 상태 변수
 unsigned long lastActivityTime = 0;
@@ -52,8 +52,8 @@ bool g_isNeoPixelOn = false; // 네오픽셀 현재 ON/OFF 상태
 
 // 게임 상태 변수
 struct GameState {
-    int maxAmmoCount = 5;
-    int currentAmmoCount = 5;
+    int maxAmmoCount = 6;
+    int currentAmmoCount = 6;
     bool firingEnabled = true;
 };
 
