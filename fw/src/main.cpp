@@ -366,7 +366,7 @@ void setup() {
     }
 
     // uint32_t debounceDelay = g_config.getUInt("debounceDelay", 0);
-    TriggerCounter::setup(TRIGGER_PIN, 0, 500);
+    TriggerCounter::setup(TRIGGER_PIN, 10, 500);
 
     Serial.print("maxAmmoCount: ");
     Serial.println(gameState.maxAmmoCount);
