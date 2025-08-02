@@ -101,6 +101,8 @@ public:
         String result = "Config dump:\n";
         result += "password=" + preferences.getString("password", "1111") + "\n";
         result += "debounceDelay=" + String(preferences.getUInt("debounceDelay", 50)) + "\n";
+
+        // 250731 탄약량 현재 및 맥스 설정 32 > 30
         result += "maxAmmoCount=" + String(preferences.getInt("maxAmmoCount", 30)) + "\n";
         result += "currentAmmo=" + String(preferences.getInt("currentAmmo", 30)) + "\n";
         return result;
@@ -118,9 +120,11 @@ public:
         if (!hasKey("debounceDelay")) {
             set("debounceDelay", uint32_t(50));
         }
+        // 250731 탄약량 맥스 설정 32 > 30
         if (!hasKey("maxAmmoCount")) {
             set("maxAmmoCount", 30);
         }
+        // 250731 탄약량 설정 32 > 30
         if (!hasKey("currentAmmo")) {
             set("currentAmmo", 30);
         }

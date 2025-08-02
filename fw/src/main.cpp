@@ -52,8 +52,10 @@ bool g_isNeoPixelOn = false; // 네오픽셀 현재 ON/OFF 상태
 
 // 게임 상태 변수
 struct GameState {
-    int maxAmmoCount = 32;
-    int currentAmmoCount = 32;
+    
+    // 20250731 탄약 맥스 및 현재 탄 수 설정 (32 > 30)
+    int maxAmmoCount = 30;
+    int currentAmmoCount = 30;
     // bool firingEnabled = true;
 };
 

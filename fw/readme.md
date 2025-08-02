@@ -171,8 +171,8 @@ config dump
   "result": "ok",
   "cfg": {
     "password": "1111",
-    "debounceDelay": 50,
-    "maxAmmoCount": 30
+    "debounceDelay": 5,
+    "maxAmmoCount": 5
   }
 }
 ```
