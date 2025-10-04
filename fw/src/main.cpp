@@ -12,7 +12,7 @@ Scheduler g_ts;
 Config g_config;
 
 // 시스템 상수
-constexpr unsigned long INACTIVITY_SLEEP_DELAY_MS = 10 * 60 * 1000UL; // 10분
+constexpr unsigned long INACTIVITY_SLEEP_DELAY_MS = 1 * 60 * 1000UL; // 1분 비활성화 후 슬립
 
 // 전역 상태 변수
 unsigned long lastActivityTime = 0;
@@ -129,14 +129,6 @@ bool isMagazineInserted() {
 int getAmmoLevel() {
     return (float(gameState.currentAmmoCount) / float(gameState.maxAmmoCount)) * 100;
 }
-
-// void stopFiring() {
-//     gameState.firingEnabled = false;
-// }
-
-// void resumeFiring() {
-//     gameState.firingEnabled = true;
-// }
 
 // 액츄에이터 제어
 Task task_EndPulse(TASK_IMMEDIATE, TASK_ONCE, []() {
