@@ -24,6 +24,7 @@ extern String getDeviceName();
 
 extern void clearTriggerCount();
 extern int getTriggerCount();
+extern void setFiringEnabled(bool enable);
 
 extern bool isMagazineInserted();  // magazineInsertedPin 상태 확인 함수 (이전 getModeStatus)
 extern int getBatteryLevel();
@@ -208,16 +209,19 @@ String ParseCmd(String _strLine) {
                 }
                 else if(subCmd == "reset") {
                     currentAmmoCount = maxAmmoCount;
-                    firingEnabled = true;
-                    digitalWrite(D9, LOW);  // 액츄에이터 비활성화
+                    setFiringEnabled(true);
+                    
+                    // firingEnabled = true;
+                    // digitalWrite(D9, LOW);  // 액츄에이터 비활성화
                     
                     _res_doc["result"] = "ok";
                     _res_doc["ammo"] = currentAmmoCount;
                 }
                 else if(subCmd == "stop") {
-                    // 발사 중지 명령 추가
-                    firingEnabled = false;
-                    digitalWrite(D9, HIGH);  // 액츄에이터 활성화
+                    // 발사 중지 명령 추가  
+                    setFiringEnabled(false);
+                    // firingEnabled = false;
+                    // digitalWrite(D9, HIGH);  // 액츄에이터 활성화
                     
                     _res_doc["result"] = "ok";
                     _res_doc["ms"] = "firing stopped";
@@ -226,8 +230,8 @@ String ParseCmd(String _strLine) {
                 else if(subCmd == "resume") {
                     // 발사 재개 명령 추가 (단, 탄약이 0이면 재개 불가)
                     if(currentAmmoCount > 0) {
-                        firingEnabled = true;
-                        digitalWrite(D9, LOW);  // 액츄에이터 비활성화
+                        setFiringEnabled(true);
+                        //digitalWrite(D9, LOW);  // 액츄에이터 비활성화
                         
                         _res_doc["result"] = "ok";
                         _res_doc["ms"] = "firing resumed";

@@ -23,6 +23,8 @@ Config g_config;
 
 extern String ParseCmd(String _strLine);
 
+
+
 #ifdef SEED_XIAO_ESP32C3
 
 const int actionPin1 = D3;       // 액츄에이터 1 (발사 중지용)
@@ -33,9 +35,23 @@ const int magazineInsertedPin = D2;  // 탄창 삽입 여부 감지 핀 (이전 
 const int batteryPin = A0;       // 배터리 전압 측정 핀
 const int neoPixelPin = D10;      // 네오픽셀 제어 핀 (이전 batStatusPin)
 
-// 네오픽셀 설정 (픽셀 수에 맞게 조정)
-#define NUM_PIXELS 1
-Adafruit_NeoPixel pixels(NUM_PIXELS, neoPixelPin, NEO_GRB + NEO_KHZ800);
+
+
+#elif TENSTAR_ESP32C3
+
+const int actionPin1 = D4;       // 액츄에이터 1 (발사 중지용)
+
+const int triggerPin = D0;       // 트리거 감지 핀
+const int magazineInsertedPin = D3;  // 탄창 삽입 여부 감지 핀 (이전 modePin)
+
+const int batteryPin = A1;       // 배터리 전압 측정 핀
+const int neoPixelPin = D8;      // 네오픽셀 제어 핀 (이전 batStatusPin)
+
+
+#else
+#define LED_BUILTIN 4
+#endif
+
 
 // 탄약 관련 설정
 int maxAmmoCount = 30;           // 최대 탄약 수
@@ -45,9 +61,9 @@ bool firingEnabled = true;       // 발사 가능 상태
 // 네오픽셀 상태 플래그
 bool showBatteryColor = true;    // true면 배터리 상태, false면 연결 상태 표시
 
-#else
-#define LED_BUILTIN 4
-#endif
+// 네오픽셀 설정 (픽셀 수에 맞게 조정)
+#define NUM_PIXELS 1
+Adafruit_NeoPixel pixels(NUM_PIXELS, neoPixelPin, NEO_GRB + NEO_KHZ800);
 
 // UUID for service and characteristic
 #define SERVICE_UUID "2ca354b0-5f62-11ef-b4d4-f7af9038ee7d"
@@ -110,6 +126,15 @@ void decreaseAmmoCount() {
 bool isMagazineInserted() {
     return !digitalRead(magazineInsertedPin);  // LOW일 때 삽입된 상태
 }
+
+// --------------------
+// 발사 차단 / 허용
+// --------------------
+void setFiringEnabled(bool enable) {
+    firingEnabled = enable;
+    digitalWrite(actionPin1, enable ? LOW : HIGH);
+}
+
 
 // 배터리 레벨 읽기 함수 (0-100%)
 int getBatteryLevel() {
