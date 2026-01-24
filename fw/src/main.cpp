@@ -39,12 +39,12 @@ const int neoPixelPin = D10;      // 네오픽셀 제어 핀 (이전 batStatusPi
 
 #elif TENSTAR_ESP32C3
 
-const int actionPin1 = D4;       // 액츄에이터 1 (발사 중지용)
+const int actionPin1 = 4;       // 액츄에이터 1 (발사 중지용)
 
-const int triggerPin = D0;       // 트리거 감지 핀
-const int magazineInsertedPin = D3;  // 탄창 삽입 여부 감지 핀 (이전 modePin)
+const int triggerPin = 0;       // 트리거 감지 핀
+const int magazineInsertedPin = 3;  // 탄창 삽입 여부 감지 핀 (이전 modePin)
 
-const int batteryPin = A1;       // 배터리 전압 측정 핀
+const int batteryPin = 1;       // 배터리 전압 측정 핀
 const int neoPixelPin = D8;      // 네오픽셀 제어 핀 (이전 batStatusPin)
 
 
